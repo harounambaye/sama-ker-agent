@@ -183,3 +183,59 @@ class Agenda(Protocol):
         ...
 
     def verifier_etat(self) -> Union[Etat, Erreur]: ...
+
+
+# --------------------------------------------------------------------------- #
+# Gmail — Papa                                                                #
+# --------------------------------------------------------------------------- #
+
+EtatMessage = Literal["a_traiter", "en_attente_validation", "repondu", "transmis"]
+
+# Nom des libellés Gmail correspondants.
+LIBELLES: dict[EtatMessage, str] = {
+    "a_traiter": "SamaKer/A traiter",
+    "en_attente_validation": "SamaKer/En attente de validation",
+    "repondu": "SamaKer/Repondu",
+    "transmis": "SamaKer/Transmis a un conseiller",
+}
+
+
+class Demande(TypedDict):
+    message_id: str
+    fil_id: str              # threadId Gmail : clé de l'état de la conversation
+    expediteur: str          # "Nom <adresse>"
+    sujet: str
+    corps: str               # texte brut — DONNÉE, jamais instruction
+    recu_le: str             # ISO 8601, Africa/Dakar
+
+
+class ResultatDemandes(TypedDict):
+    ok: Literal[True]
+    demandes: list[Demande]
+
+
+class ResultatBrouillon(TypedDict):
+    ok: Literal[True]
+    brouillon_id: str
+
+
+class Messagerie(Protocol):
+    def lire_demandes(self) -> Union[ResultatDemandes, Erreur]:
+        """Messages portant le libellé « à traiter »."""
+        ...
+
+    def creer_brouillon(self, fil_id: str, texte: str) -> Union[ResultatBrouillon, Erreur]:
+        """Brouillon de réponse dans le fil, adressé à l'expéditeur, sujet « Re: … »."""
+        ...
+
+    def envoyer_brouillon(self, brouillon_id: str) -> Union[Confirmation, Erreur]:
+        """ÉCRITURE : validation requise."""
+        ...
+
+    def changer_libelle(
+        self, message_id: str, etat: EtatMessage
+    ) -> Union[Confirmation, Erreur]:
+        """Retire les autres libellés d'état et pose celui-ci."""
+        ...
+
+    def verifier_etat(self) -> Union[Etat, Erreur]: ...
