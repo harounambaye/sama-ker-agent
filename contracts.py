@@ -76,3 +76,45 @@ class Confirmation(TypedDict):
 
 def erreur(code: CodeErreur, message: str) -> Erreur:
     return {"ok": False, "code": code, "message": message}
+
+
+# --------------------------------------------------------------------------- #
+# Catalogue (serveur MCP) — Fatou                                             #
+# --------------------------------------------------------------------------- #
+
+TypeBien = Literal["appartement", "studio", "villa", "chambre", "bureau"]
+
+
+class Bien(TypedDict):
+    id: str                  # ex. "SK-001"
+    type: TypeBien
+    quartier: str            # ex. "Mermoz", "Almadies", "Plateau"
+    loyer_fcfa: int          # loyer mensuel en F CFA
+    pieces: int              # F3 = 3 pièces
+    adresse: str
+    disponible: bool
+    description: str
+
+
+class ResultatRecherche(TypedDict):
+    ok: Literal[True]
+    biens: list[Bien]        # liste vide si aucun bien ne correspond
+
+
+class ResultatDetail(TypedDict):
+    ok: Literal[True]
+    bien: Bien
+
+
+class Catalogue(Protocol):
+    def rechercher_biens(
+        self,
+        type: TypeBien | None = None,
+        quartier: str | None = None,
+        loyer_max: int | None = None,
+        pieces: int | None = None,
+    ) -> Union[ResultatRecherche, Erreur]: ...
+
+    def detail_bien(self, bien_id: str) -> Union[ResultatDetail, Erreur]: ...
+
+    def verifier_etat(self) -> Union[Etat, Erreur]: ...
