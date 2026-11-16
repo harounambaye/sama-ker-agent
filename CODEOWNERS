@@ -1,0 +1,14 @@
+# Chaque dossier a son propriétaire, demandé automatiquement en relecture.
+# Les règles plus bas l'emportent sur les plus hautes.
+
+*                       @harounambaye
+/agent/                 @harounambaye
+/traces/                @harounambaye
+/contracts.py           @harounambaye
+/.env.example           @harounambaye
+
+# À décommenter avec les vrais identifiants une fois Fatou et Papa ajoutés
+# comme collaborateurs (un identifiant inconnu rend la ligne invalide).
+# /mcp_server/            @identifiant-fatou
+# /eval/                  @identifiant-fatou
+# /integrations/google/   @identifiant-papa
