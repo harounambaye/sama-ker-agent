@@ -45,7 +45,13 @@ _BIENS: list[Bien] = [
 ]
 
 
+_LIGATURES = str.maketrans({"œ": "oe", "Œ": "Oe", "æ": "ae", "Æ": "Ae"})
+
+
 def _norm(texte: str) -> str:
+    """« Sacré-Cœur », « sacre coeur » et « SACRE-COEUR » donnent la même clé.
+    NFKD ne décompose pas les ligatures œ/æ : on les remplace d'abord."""
+    texte = texte.translate(_LIGATURES)
     sans_accents = unicodedata.normalize("NFKD", texte).encode("ascii", "ignore").decode()
     return " ".join(sans_accents.lower().replace("-", " ").split())
 
