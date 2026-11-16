@@ -1,0 +1,14 @@
+# Agent
+langgraph
+langgraph-checkpoint-sqlite
+langchain-anthropic
+langchain-mcp-adapters
+python-dotenv
+
+# Serveur MCP
+mcp
+
+# Google
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
