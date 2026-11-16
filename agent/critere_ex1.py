@@ -19,7 +19,9 @@ import re
 import sys
 
 from agent import config
+from agent.briques import sondes
 from agent.catalogue_factice import CatalogueFactice
+from agent.etat import VerificateurEtat, bloquer_si_indisponible
 from agent.graphe import construire_graphe, executer
 from agent.outils import OutilsCatalogueLocal
 from agent.traces import Trace
@@ -58,6 +60,7 @@ def main() -> None:
     args = p.parse_args()
 
     cfg = config.charger()
+    bloquer_si_indisponible(VerificateurEtat(sondes(cfg, CatalogueFactice())))
     reussites = 0
     for i, (demande, attendus) in enumerate(DEMANDES, 1):
         trace = Trace(cfg.traces_dir, etiquette=f"ex1-{i:02d}", verbeux=args.verbeux)
