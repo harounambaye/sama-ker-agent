@@ -1,9 +1,9 @@
 # Agent
-langgraph
-langgraph-checkpoint-sqlite
-langchain-anthropic
-langchain-mcp-adapters
-python-dotenv
+anthropic>=2.9
+langgraph>=1.2
+langgraph-checkpoint-sqlite>=3.1
+python-dotenv>=1.2
+tzdata                      # fuseau Africa/Dakar sous Windows
 
 # Serveur MCP
 mcp
