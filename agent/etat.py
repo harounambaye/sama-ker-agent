@@ -12,9 +12,9 @@ Quand vérifier (contrat d'équipe) :
 
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as DelaiDepasse
 from typing import Callable
 
 from contracts import erreur
@@ -42,14 +42,26 @@ class VerificateurEtat:
         return list(self._briques)
 
     def _sonder(self, nom: str) -> dict:
+        # Un thread dédié par sonde : une brique bloquée ne retient aucun thread
+        # du pool, et l'attente est bornée par le délai.
         t0 = time.perf_counter()
-        futur = self._pool.submit(self._briques[nom])
-        try:
-            resultat = futur.result(timeout=self._delai)
-        except DelaiDepasse:
-            return erreur("DELAI_DEPASSE", f"{nom} n'a pas répondu en {self._delai:.0f} s.")
-        except Exception as e:  # une sonde ne doit jamais faire tomber l'agent
+        boite: dict = {}
+
+        def cible() -> None:
+            try:
+                boite["resultat"] = self._briques[nom]()
+            except Exception as e:  # une sonde ne doit jamais faire tomber l'agent
+                boite["exception"] = e
+
+        fil = threading.Thread(target=cible, name=f"sonde-{nom}", daemon=True)
+        fil.start()
+        fil.join(self._delai)
+        if fil.is_alive():
+            return erreur("DELAI_DEPASSE", f"{nom} n'a pas répondu en {self._delai:g} s.")
+        if "exception" in boite:
+            e = boite["exception"]
             return erreur("INDISPONIBLE", f"{nom} : {type(e).__name__}: {e}")
+        resultat = boite.get("resultat")
         if not isinstance(resultat, dict) or "ok" not in resultat:
             return erreur("INTERNE", f"{nom} : réponse de verifier_etat non conforme.")
         if resultat["ok"] and "latence_ms" not in resultat:
