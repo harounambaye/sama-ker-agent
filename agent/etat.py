@@ -93,3 +93,35 @@ class VerificateurEtat:
 
     def disponibles(self, *noms: str, forcer: bool = False) -> bool:
         return all(r["ok"] for r in self.verifier(*noms, forcer=forcer).values())
+
+
+def rapport(resultats: dict[str, dict]) -> str:
+    """Tableau lisible de l'état des briques."""
+    lignes = []
+    for nom, r in resultats.items():
+        if r["ok"]:
+            detail = f"{r['latence_ms']} ms" + (f" · {r['mode']}" if "mode" in r else "")
+            lignes.append(f"  ok      {nom:<10} {detail}")
+        else:
+            lignes.append(f"  ERREUR  {nom:<10} [{r['code']}] {r['message']}")
+    return "\n".join(lignes)
+
+
+def main() -> None:
+    """python -m agent.etat : état des quatre briques, code de sortie 1 si l'une est en erreur."""
+    import sys
+
+    from agent import config
+    from agent.briques import sondes
+    from agent.catalogue_factice import CatalogueFactice
+
+    cfg = config.charger()
+    resultats = VerificateurEtat(sondes(cfg, CatalogueFactice())).verifier()
+    print(f"État des briques (modèle : {cfg.model})\n{rapport(resultats)}")
+    tout_ok = all(r["ok"] for r in resultats.values())
+    print("\nok" if tout_ok else "\nAu moins une brique est indisponible.")
+    sys.exit(0 if tout_ok else 1)
+
+
+if __name__ == "__main__":
+    main()
