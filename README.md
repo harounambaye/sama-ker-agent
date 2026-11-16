@@ -45,5 +45,31 @@ main à un conseiller. Une erreur d'outil n'interrompt pas la boucle : elle revi
 au modèle au format `{"ok": false, "code", "message"}`. Une erreur de l'API du
 modèle termine le traitement sans réponse inventée.
 
+## État des briques
+
+```bash
+python -m agent.etat      # code de sortie 0 si tout est ok, 1 sinon
+```
+
+```
+État des briques (modèle : claude-haiku-5-5)
+  ok      modele     312 ms
+  ok      catalogue  0 ms
+  ok      calendar   0 ms · factice (Calendar pas encore branché)
+  ok      gmail      0 ms · factice (Gmail pas encore branché)
+```
+
+Chaque brique expose `verifier_etat()` sans argument ni effet de bord. Le code
+du graphe, pas le modèle, l'appelle : au démarrage (une brique en erreur bloque
+le lancement), avant chaque email (résultat gardé une minute), après une erreur
+d'outil et juste avant une écriture validée (vérification forcée). La sonde du
+modèle passe par l'API des modèles et ne consomme aucun token.
+
+## Tests
+
+```bash
+python -m pytest          # hors ligne : ni réseau, ni clé, ni .env
+```
+
 Les sections *configuration des accès Google*, *serveur MCP* et *évaluation*
 seront complétées par chaque pull request.
