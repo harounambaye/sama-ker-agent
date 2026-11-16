@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 
 from agent import config
+from agent.briques import sondes
 from agent.catalogue_factice import CatalogueFactice
+from agent.etat import VerificateurEtat, bloquer_si_indisponible
 from agent.graphe import construire_graphe, executer
 from agent.outils import OutilsCatalogueLocal
 from agent.traces import Trace
@@ -18,8 +20,10 @@ def main() -> None:
     args = p.parse_args()
 
     cfg = config.charger()
+    catalogue = CatalogueFactice()
+    bloquer_si_indisponible(VerificateurEtat(sondes(cfg, catalogue)))
     trace = Trace(cfg.traces_dir, verbeux=args.verbeux)
-    graphe = construire_graphe(cfg, OutilsCatalogueLocal(CatalogueFactice()), trace)
+    graphe = construire_graphe(cfg, OutilsCatalogueLocal(catalogue), trace)
     etat = executer(graphe, cfg, args.demande, trace)
 
     print("\n" + etat.get("reponse", ""))

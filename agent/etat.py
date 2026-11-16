@@ -107,6 +107,17 @@ def rapport(resultats: dict[str, dict]) -> str:
     return "\n".join(lignes)
 
 
+def bloquer_si_indisponible(verificateur: VerificateurEtat) -> None:
+    """Au démarrage : une brique en erreur bloque le lancement, avec un message clair."""
+    import sys
+
+    resultats = verificateur.verifier(forcer=True)
+    if not all(r["ok"] for r in resultats.values()):
+        print("Démarrage impossible, au moins une brique est indisponible :\n"
+              + rapport(resultats), file=sys.stderr)
+        sys.exit(2)
+
+
 def main() -> None:
     """python -m agent.etat : état des quatre briques, code de sortie 1 si l'une est en erreur."""
     import sys
