@@ -1,0 +1,29 @@
+# Secrets
+.env
+credentials.json
+token.json
+client_secret*.json
+secrets/
+
+# Bases SQLite (régénérées par script)
+*.sqlite
+*.sqlite3
+*.db
+data/
+
+# Traces brutes (seules les traces analysées dans traces/ sont versionnées)
+traces/brutes/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
