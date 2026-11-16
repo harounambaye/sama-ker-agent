@@ -118,3 +118,68 @@ class Catalogue(Protocol):
     def detail_bien(self, bien_id: str) -> Union[ResultatDetail, Erreur]: ...
 
     def verifier_etat(self) -> Union[Etat, Erreur]: ...
+
+
+# --------------------------------------------------------------------------- #
+# Google Calendar — Papa                                                      #
+# --------------------------------------------------------------------------- #
+
+
+class Creneau(TypedDict):
+    conseiller: Conseiller
+    debut: str               # ISO 8601, Africa/Dakar
+    fin: str                 # debut + 45 min
+
+
+class ResultatCreneaux(TypedDict):
+    ok: Literal[True]
+    creneaux: list[Creneau]
+
+
+class ResultatVisite(TypedDict):
+    ok: Literal[True]
+    evenement_id: str
+    deja_existante: bool     # True si l'appel était un doublon (idempotence)
+
+
+def id_evenement(fil_id: str, debut: str) -> str:
+    """Identifiant d'événement déterministe, dérivé du fil Gmail et du créneau.
+
+    Un second appel creer_visite sur le même fil et le même créneau retombe sur
+    le même identifiant : Google refuse le doublon. Le hachage hexadécimal
+    respecte l'alphabet imposé par Google (base32hex : a-v, 0-9).
+    """
+    return "sk" + hashlib.sha1(f"{fil_id}|{debut}".encode()).hexdigest()
+
+
+class Agenda(Protocol):
+    def lister_creneaux_libres(
+        self, conseiller: Conseiller | None, debut: str, fin: str
+    ) -> Union[ResultatCreneaux, Erreur]:
+        """conseiller=None : créneaux libres de tous les conseillers."""
+        ...
+
+    def creer_visite(
+        self,
+        conseiller: Conseiller,
+        debut: str,
+        bien_id: str,
+        adresse: str,
+        client_nom: str,
+        client_email: str,
+        fil_id: str,
+    ) -> Union[ResultatVisite, Erreur]:
+        """Revérifie le créneau juste avant l'écriture. ÉCRITURE : validation requise."""
+        ...
+
+    def deplacer_visite(
+        self, evenement_id: str, nouveau_debut: str
+    ) -> Union[Confirmation, Erreur]:
+        """ÉCRITURE : validation requise."""
+        ...
+
+    def annuler_visite(self, evenement_id: str) -> Union[Confirmation, Erreur]:
+        """ÉCRITURE : validation requise."""
+        ...
+
+    def verifier_etat(self) -> Union[Etat, Erreur]: ...
