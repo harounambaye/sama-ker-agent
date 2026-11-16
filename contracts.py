@@ -113,7 +113,10 @@ class Catalogue(Protocol):
         quartier: str | None = None,
         loyer_max: int | None = None,
         pieces: int | None = None,
-    ) -> Union[ResultatRecherche, Erreur]: ...
+    ) -> Union[ResultatRecherche, Erreur]:
+        """Ne renvoie que les biens disponibles. Quartier comparé sans tenir compte
+        de la casse ni des accents. Tri par loyer croissant."""
+        ...
 
     def detail_bien(self, bien_id: str) -> Union[ResultatDetail, Erreur]: ...
 
