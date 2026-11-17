@@ -19,6 +19,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from mcp_server.catalogue import CatalogueSQLite
+from mcp_server.agence import informations_agence
 
 HOTE = "127.0.0.1"
 PORT = 8000
@@ -70,6 +71,22 @@ def detail_bien(
     return catalogue.detail_bien(bien_id)
 
 
+@serveur.tool()
+def verifier_etat() -> dict:
+    """Vérifie que le catalogue répond : base ouverte et 30 biens présents. Sans argument,
+    ne modifie rien. Renvoie {ok: true, latence_ms} ou {ok: false, code, message}."""
+    return catalogue.verifier_etat()
+
+
+@serveur.resource(
+    "agence://informations",
+    name="informations_agence",
+    title="Informations sur l'agence",
+    description="Horaires de visite, zones couvertes et conditions de location de l'agence.",
+    mime_type="text/markdown",
+)
+def ressource_agence() -> str:
+    return informations_agence()
 def main() -> None:
     if "--http" in sys.argv:
         serveur.run("streamable-http", host=HOTE, port=PORT)
