@@ -1,18 +1,36 @@
 """Assemblage des quatre briques de l'agent et de leurs sondes d'état.
 
-Tant que les PR de Fatou (serveur MCP) et de Papa (Google) ne sont pas fusionnées,
-le catalogue est factice et Calendar/Gmail sont signalés « non branchés ».
+Catalogue : serveur MCP de Fatou par défaut (CATALOGUE=mcp), ou catalogue factice
+en mémoire (CATALOGUE=factice) pour travailler sans serveur. Tant que la PR de Papa
+(Google) n'est pas fusionnée, Calendar/Gmail sont des factices ou signalés « non branchés ».
 """
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Callable
 
 import anthropic
 
 from agent.config import Config
+from agent.outils import BoiteAOutils
 from contracts import erreur
+
+
+def catalogue() -> tuple[BoiteAOutils, object]:
+    """(outils proposés au modèle, brique exposant verifier_etat) selon CATALOGUE."""
+    mode = os.getenv("CATALOGUE", "mcp").lower()
+    if mode == "factice":
+        from agent.catalogue_factice import CatalogueFactice
+        from agent.outils import OutilsCatalogueLocal
+        brique = CatalogueFactice()
+        return OutilsCatalogueLocal(brique), brique
+    if mode != "mcp":
+        raise SystemExit(f"CATALOGUE={mode!r} inconnu : mcp ou factice.")
+    from agent.outils_mcp import OutilsMCP
+    outils = OutilsMCP()
+    return outils, outils
 
 
 def sonde_modele(cfg: Config, client: anthropic.Anthropic | None = None) -> Callable[[], dict]:
