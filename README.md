@@ -25,7 +25,12 @@ python -m venv .venv
 # Windows : .venv\Scripts\activate    -    Linux/macOS : source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env    # puis remplir les valeurs
+python -m mcp_server.creer_catalogue    # base du catalogue (30 biens)
 ```
+
+L'agent lance lui-même le serveur MCP du catalogue (`MCP_TRANSPORT=stdio`), ou se
+connecte à un serveur déjà lancé (`MCP_TRANSPORT=http`, `MCP_URL`). Pour travailler
+sans serveur : `CATALOGUE=factice` (mêmes biens SK-001 à SK-010, en mémoire).
 
 ## Lancer l'agent (exercice 1)
 
@@ -37,6 +42,10 @@ python -m agent.critere_ex1                                           # critère
 Chaque traitement écrit sa trace dans `traces/brutes/<date>_<id>.jsonl` : un
 événement par appel au modèle (tokens, cache, raison d'arrêt, durée) et par
 appel d'outil (arguments, résultat, durée).
+
+**Catalogue** ([agent/outils_mcp.py](agent/outils_mcp.py)) : les outils proposés au modèle
+sont ceux que le serveur MCP expose (`rechercher_biens`, `detail_bien`) ; `verifier_etat`
+reste réservé au code du graphe. Une session MCP est ouverte une fois et sert tous les appels.
 
 **Boucle** ([agent/graphe.py](agent/graphe.py)) : graphe LangGraph `modele → outils → modele`,
 modèle appelé avec le SDK `anthropic`. Bornes : `MAX_ETAPES` appels au modèle et
@@ -54,7 +63,7 @@ python -m agent.etat      # code de sortie 0 si tout est ok, 1 sinon
 ```
 État des briques (modèle : claude-haiku-5-5)
   ok      modele     312 ms
-  ok      catalogue  0 ms
+  ok      catalogue  2 ms
   ok      calendar   0 ms · factice (Calendar pas encore branché)
   ok      gmail      0 ms · factice (Gmail pas encore branché)
 ```
