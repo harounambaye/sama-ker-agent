@@ -4,7 +4,7 @@ import pytest
 
 from agent.catalogue_factice import CatalogueFactice
 from agent.conversation import (
-    construire_graphe_conversation, decider, demarrer, en_attente, message_initial,
+    construire_graphe_conversation, decider, demarrer, en_attente, message_initial, separer,
 )
 from agent.etat import VerificateurEtat
 from agent.factices import AgendaFactice, MessagerieFactice
@@ -16,13 +16,16 @@ from tests.conftest import FauxClient, appel_outil, message, texte
 
 APPROUVER = {"action": "approuver", "conseiller": "Khady"}
 REPONSE = "Bonjour, nous vous proposons SK-001 à Mermoz."
+NOTE = "Une seule annonce correspond."
+SORTIE_MODELE = (f"Voici le brouillon :\n<email_client>\n{REPONSE}\n</email_client>\n"
+                 f"<note_conseiller>{NOTE}</note_conseiller>")
 
 
-def reponses_nominales():
+def reponses_nominales(sortie=SORTIE_MODELE):
     return [
         message([appel_outil("t1", "rechercher_biens",
                              {"quartier": "Mermoz", "pieces": 3, "loyer_max": 400_000})], "tool_use"),
-        message([texte(REPONSE)], "end_turn"),
+        message([texte(sortie)], "end_turn"),
     ]
 
 
@@ -56,6 +59,7 @@ def test_pause_avant_envoi_rien_n_est_envoye(agence):
     s = demarrer(agence.graphe(reponses_nominales()), agence.cfg, demande)
     assert s["en_attente"]["proposition"]["type"] == "envoyer_brouillon"
     assert s["en_attente"]["proposition"]["texte"] == REPONSE
+    assert s["en_attente"]["proposition"]["note"] == NOTE
     assert agence.messagerie.envoyes == []
     assert agence.messagerie.etat_message(demande["message_id"]) == "en_attente_validation"
 
@@ -139,6 +143,29 @@ def test_limite_de_la_boucle_transmet_sans_brouillon(agence):
     assert s["issue"] == "transmis"
     assert agence.messagerie.etat_message(demande["message_id"]) == "transmis"
     assert agence.messagerie.envoyes == []
+
+
+def test_seul_l_email_client_part_jamais_la_note_interne(agence):
+    demande = agence.email()
+    g = agence.graphe(reponses_nominales())
+    demarrer(g, agence.cfg, demande)
+    decider(g, agence.cfg, demande["fil_id"], APPROUVER)
+    (envoye,) = agence.messagerie.envoyes
+    assert envoye["texte"] == REPONSE
+    assert NOTE not in envoye["texte"] and "Voici le brouillon" not in envoye["texte"]
+
+
+def test_reponse_sans_balise_email_client_transmise_sans_brouillon(agence):
+    demande = agence.email()
+    s = demarrer(agence.graphe(reponses_nominales("Bonjour, voici SK-001.")), agence.cfg, demande)
+    assert s["issue"] == "transmis" and s["en_attente"] is None
+    assert agence.messagerie.etat_message(demande["message_id"]) == "transmis"
+
+
+def test_separer_email_et_note():
+    assert separer("<email_client> Bonjour </email_client>") == ("Bonjour", "")
+    assert separer("<email_client>  </email_client>")[0] is None
+    assert separer("pas de balise")[0] is None
 
 
 def test_le_modele_n_a_aucun_outil_d_ecriture(agence):
