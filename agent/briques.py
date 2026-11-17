@@ -44,10 +44,10 @@ def sonde_non_branchee(nom: str) -> Callable[[], dict]:
     return verifier_etat
 
 
-def sondes(cfg: Config, catalogue) -> dict[str, Callable[[], dict]]:
+def sondes(cfg: Config, catalogue, agenda=None, messagerie=None) -> dict[str, Callable[[], dict]]:
     return {
         "modele": sonde_modele(cfg),
         "catalogue": catalogue.verifier_etat,
-        "calendar": sonde_non_branchee("Calendar"),
-        "gmail": sonde_non_branchee("Gmail"),
+        "calendar": agenda.verifier_etat if agenda else sonde_non_branchee("Calendar"),
+        "gmail": messagerie.verifier_etat if messagerie else sonde_non_branchee("Gmail"),
     }
