@@ -7,8 +7,8 @@ Sur dix demandes, vérifie que l'agent :
   2. cite les biens attendus quand il y en a ;
   3. dit clairement « aucun bien » quand rien ne correspond.
 
-Les résultats attendus correspondent au catalogue factice ; ils seront recalés
-sur la base de Fatou à l'exercice 2. Le contrôle d'ancrage (1) reste valable tel quel.
+Les résultats attendus sont les mêmes sur le serveur MCP de Fatou (par défaut) et
+sur le catalogue factice (CATALOGUE=factice) : SK-001 à SK-010 y sont identiques.
 """
 
 from __future__ import annotations
@@ -19,11 +19,9 @@ import re
 import sys
 
 from agent import config
-from agent.briques import sondes
-from agent.catalogue_factice import CatalogueFactice
+from agent.briques import catalogue, sondes
 from agent.etat import VerificateurEtat, bloquer_si_indisponible
 from agent.graphe import construire_graphe, executer
-from agent.outils import OutilsCatalogueLocal
 from agent.traces import Trace
 
 DEMANDES: list[tuple[str, set[str]]] = [
@@ -60,11 +58,12 @@ def main() -> None:
     args = p.parse_args()
 
     cfg = config.charger()
-    bloquer_si_indisponible(VerificateurEtat(sondes(cfg, CatalogueFactice())))
+    outils, brique = catalogue()   # une seule session MCP pour les dix demandes
+    bloquer_si_indisponible(VerificateurEtat(sondes(cfg, brique)))
     reussites = 0
     for i, (demande, attendus) in enumerate(DEMANDES, 1):
         trace = Trace(cfg.traces_dir, etiquette=f"ex1-{i:02d}", verbeux=args.verbeux)
-        graphe = construire_graphe(cfg, OutilsCatalogueLocal(CatalogueFactice()), trace)
+        graphe = construire_graphe(cfg, outils, trace)
         etat = executer(graphe, cfg, demande, trace)
         reponse = etat.get("reponse", "")
 

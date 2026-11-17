@@ -17,27 +17,25 @@ from pathlib import Path
 from typing import Callable
 
 from agent import config
-from agent.briques import sondes
-from agent.catalogue_factice import CatalogueFactice
+from agent.briques import catalogue, sondes
 from agent.conversation import construire_graphe_conversation, decider, demarrer, en_attente
 from agent.etat import VerificateurEtat, bloquer_si_indisponible
 from agent.factices import AgendaFactice, MessagerieFactice
 from agent.memoire import ouvrir_checkpointer
-from agent.outils import OutilsCatalogueLocal
 from agent.traces import Trace
 from agent.validation import Decision
 
 
 def assembler(cfg: config.Config, verbeux: bool = False):
     dossier = Path(os.getenv("FACTICES_DIR", "data/factices"))
-    catalogue = CatalogueFactice()
+    outils, brique = catalogue()
     messagerie = MessagerieFactice(dossier / "messagerie.json")
     agenda = AgendaFactice(dossier / "agenda.json")
-    verificateur = VerificateurEtat(sondes(cfg, catalogue, agenda, messagerie))
+    verificateur = VerificateurEtat(sondes(cfg, brique, agenda, messagerie))
     bloquer_si_indisponible(verificateur)
     checkpointer = ouvrir_checkpointer(cfg.checkpoint_db)
     graphe = construire_graphe_conversation(
-        cfg, OutilsCatalogueLocal(catalogue), agenda, messagerie, verificateur,
+        cfg, outils, agenda, messagerie, verificateur,
         Trace(cfg.traces_dir, etiquette="conversation", verbeux=verbeux), checkpointer,
     )
     return graphe, checkpointer, messagerie
