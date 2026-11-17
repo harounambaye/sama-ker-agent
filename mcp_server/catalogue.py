@@ -8,6 +8,7 @@ La base est créée par : python -m mcp_server.creer_catalogue
 from __future__ import annotations
 
 import sqlite3
+import time
 import unicodedata
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from contracts import Bien, erreur
 from mcp_server.creer_catalogue import chemin_base
 
 TYPES_VALIDES = ("appartement", "studio", "villa", "chambre", "bureau")
+NOMBRE_BIENS_ATTENDU = 30
 
 _LIGATURES = str.maketrans({"œ": "oe", "Œ": "Oe", "æ": "ae", "Æ": "Ae"})
 
@@ -121,3 +123,22 @@ class CatalogueSQLite:
                           f"Aucun bien de référence {reference}. "
                           "Utilise une référence renvoyée par rechercher_biens.")
         return {"ok": True, "bien": _ligne_vers_bien(ligne)}
+
+    def verifier_etat(self) -> dict:
+        """Vérifie que la base s'ouvre et contient les 30 biens. Ne modifie rien."""
+        debut = time.perf_counter()
+        try:
+            connexion = self._connecter()
+            try:
+                nombre = connexion.execute("SELECT COUNT(*) FROM biens").fetchone()[0]
+            finally:
+                connexion.close()
+        except sqlite3.Error as exc:
+            return erreur("INDISPONIBLE",
+                          f"Catalogue inaccessible ({exc}). "
+                          "Lancer : python -m mcp_server.creer_catalogue")
+        if nombre != NOMBRE_BIENS_ATTENDU:
+            return erreur("INTERNE",
+                          f"Le catalogue contient {nombre} biens au lieu de {NOMBRE_BIENS_ATTENDU}. "
+                          "Lancer : python -m mcp_server.creer_catalogue")
+        return {"ok": True, "latence_ms": round((time.perf_counter() - debut) * 1000)}

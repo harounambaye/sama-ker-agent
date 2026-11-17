@@ -20,6 +20,15 @@ async def essayer(cible) -> None:
         outils = await client.list_tools()
         print("Outils exposés :", [outil.name for outil in outils.tools])
 
+        etat = await client.call_tool("verifier_etat", {})
+        print("\nverifier_etat :", etat.content[0].text.replace("\n", " "))
+
+        ressources = await client.list_resources()
+        print("Ressources exposées :", [str(r.uri) for r in ressources.resources])
+        fiche = await client.read_resource("agence://informations")
+        print("\nRessource agence://informations :")
+        print(fiche.contents[0].text)
+
         resultat = await client.call_tool(
             "rechercher_biens",
             {"type": "appartement", "quartier": "Mermoz", "pieces": 3, "loyer_max": 400000},
