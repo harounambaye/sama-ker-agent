@@ -3,6 +3,7 @@
     START -> [boucle modele/outils] -> preparer
     preparer -- réponse prête ------------> brouillon dans le fil -> valider
     preparer -- limite/refus/erreur ------> libellé « transmis » -> END
+    preparer -- pas de <email_client> ----> libellé « transmis » -> END
     preparer -- Gmail indisponible -------> rien n'est écrit -> END (reste « à traiter »)
     valider  (interrupt : PAUSE, état sauvegardé par fil Gmail)
     valider  -- approuver / modifier ------> ecrire
@@ -17,6 +18,7 @@ le nœud `valider`. C'est le graphe qui impose la règle, pas le prompt.
 
 from __future__ import annotations
 
+import re
 from typing import Literal
 
 import anthropic
@@ -55,8 +57,26 @@ def message_initial(demande: Demande) -> str:
         f"Objet : {demande['sujet']}\n\n"
         f"{demande['corps']}\n"
         "</email>\n"
-        "Rédige la réponse de l'agence à ce client, prête à être relue par un conseiller."
+        "Rédige la réponse de l'agence à ce client. Format obligatoire :\n"
+        "<email_client>\n"
+        "le corps de l'email exactement tel qu'il sera envoyé au client : texte brut, "
+        "sans Markdown, sans ligne « Objet », sans phrase qui s'adresse au conseiller\n"
+        "</email_client>\n"
+        "<note_conseiller>\n"
+        "facultatif : ce que le conseiller doit savoir, jamais envoyé au client\n"
+        "</note_conseiller>"
     )
+
+
+def _balise(nom: str, texte: str) -> str | None:
+    m = re.search(rf"<{nom}>\s*(.*?)\s*</{nom}>", texte, re.S)
+    return m.group(1) if m else None
+
+
+def separer(reponse: str) -> tuple[str | None, str]:
+    """(email destiné au client, note interne). L'email vaut None si sa balise manque
+    ou est vide : on n'envoie jamais un texte dont on ignore s'il s'adresse au client."""
+    return (_balise("email_client", reponse) or None), (_balise("note_conseiller", reponse) or "")
 
 
 def construire_graphe_conversation(
@@ -78,7 +98,13 @@ def construire_graphe_conversation(
             incident = rapport(verificateur.verifier("gmail"))
             trace.evenement("incident", fil_id=etat["fil_id"], etape="brouillon", detail=incident)
             return {"issue": "reporte", "incident": incident}
-        brouillon = messagerie.creer_brouillon(etat["fil_id"], etat["reponse"])
+        email, note = separer(etat["reponse"])
+        if email is None:
+            messagerie.changer_libelle(etat["message_id"], "transmis")
+            trace.evenement("transmis_conseiller", fil_id=etat["fil_id"], statut="format",
+                            detail="réponse sans balise <email_client>")
+            return {"issue": "transmis"}
+        brouillon = messagerie.creer_brouillon(etat["fil_id"], email)
         if not brouillon.get("ok"):
             trace.evenement("incident", fil_id=etat["fil_id"], etape="brouillon", detail=brouillon)
             return {"issue": "reporte", "incident": brouillon.get("message")}
@@ -86,7 +112,8 @@ def construire_graphe_conversation(
         proposition: Proposition = {
             "type": "envoyer_brouillon",
             "arguments": {"brouillon_id": brouillon["brouillon_id"]},
-            "texte": etat["reponse"],
+            "texte": email,
+            "note": note,
             "fil_id": etat["fil_id"],
             "resume": f"Réponse à {etat.get('expediteur', 'client')}",
         }
