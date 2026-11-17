@@ -11,9 +11,17 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
-from contracts import EtatMessage, Messagerie, erreur
+from contracts import (
+    CONSEILLERS, DUREE_VISITE_MIN, FUSEAU, HEURE_FERMETURE, HEURE_OUVERTURE,
+    JOURS_OUVRES, Agenda, EtatMessage, Messagerie, erreur, id_evenement,
+)
+
+DAKAR = ZoneInfo(FUSEAU)
+DUREE = timedelta(minutes=DUREE_VISITE_MIN)
 
 
 class _Persistant:
@@ -111,5 +119,113 @@ class MessagerieFactice(_Persistant, Messagerie):
         if message_id not in self._d["messages"]:
             return erreur("INTROUVABLE", f"Aucun message {message_id}.")
         self._d["messages"][message_id]["etat"] = etat
+        self._sauver()
+        return {"ok": True}
+
+
+def _date(iso: str) -> datetime:
+    d = datetime.fromisoformat(iso)
+    return d.replace(tzinfo=DAKAR) if d.tzinfo is None else d.astimezone(DAKAR)
+
+
+def _creneaux_du_jour(jour: datetime) -> list[datetime]:
+    """Débuts de visite d'une journée ouvrée : 9h00, 9h45, ... dernier fini à 18h00."""
+    if jour.weekday() not in JOURS_OUVRES:
+        return []
+    debut = jour.replace(hour=HEURE_OUVERTURE, minute=0, second=0, microsecond=0)
+    fermeture = jour.replace(hour=HEURE_FERMETURE, minute=0, second=0, microsecond=0)
+    creneaux = []
+    while debut + DUREE <= fermeture:
+        creneaux.append(debut)
+        debut += DUREE
+    return creneaux
+
+
+class AgendaFactice(_Persistant, Agenda):
+    def _vide(self) -> dict:
+        return {"compteur": 0, "evenements": {}}
+
+    @property
+    def evenements(self) -> dict[str, dict]:
+        return dict(self._d["evenements"])
+
+    def _libre(self, conseiller: str, debut: datetime, sauf: str | None = None) -> bool:
+        fin = debut + DUREE
+        for ev_id, ev in self._d["evenements"].items():
+            if ev_id == sauf or ev["conseiller"] != conseiller:
+                continue
+            if _date(ev["debut"]) < fin and debut < _date(ev["fin"]):
+                return False
+        return True
+
+    @staticmethod
+    def _conforme(debut: datetime) -> bool:
+        return debut in _creneaux_du_jour(debut)
+
+    def lister_creneaux_libres(self, conseiller, debut, fin):
+        if self.panne:
+            return erreur("INDISPONIBLE", "Calendar injoignable (panne simulée).")
+        if conseiller is not None and conseiller not in CONSEILLERS:
+            return erreur("ARGUMENT_INVALIDE", f"Conseiller inconnu : {conseiller}.")
+        try:
+            t0, t1 = _date(debut), _date(fin)
+        except ValueError:
+            return erreur("ARGUMENT_INVALIDE", "debut et fin doivent être des dates ISO 8601.")
+        cibles = [conseiller] if conseiller else list(CONSEILLERS)
+        creneaux = []
+        jour = t0.replace(hour=0, minute=0, second=0, microsecond=0)
+        while jour <= t1:
+            for c in _creneaux_du_jour(jour):
+                if c < t0 or c + DUREE > t1:
+                    continue
+                for nom in cibles:
+                    if self._libre(nom, c):
+                        creneaux.append({"conseiller": nom, "debut": c.isoformat(),
+                                         "fin": (c + DUREE).isoformat()})
+            jour += timedelta(days=1)
+        return {"ok": True, "creneaux": creneaux}
+
+    def creer_visite(self, conseiller, debut, bien_id, adresse, client_nom,
+                     client_email, fil_id):
+        if self.panne:
+            return erreur("INDISPONIBLE", "Calendar injoignable (panne simulée).")
+        if conseiller not in CONSEILLERS:
+            return erreur("ARGUMENT_INVALIDE", f"Conseiller inconnu : {conseiller}.")
+        d = _date(debut)
+        ev_id = id_evenement(fil_id, d.isoformat())
+        if ev_id in self._d["evenements"]:   # même fil, même créneau : pas de doublon
+            return {"ok": True, "evenement_id": ev_id, "deja_existante": True}
+        if not self._conforme(d):
+            return erreur("CRENEAU_INDISPONIBLE",
+                          "Hors règles de l'agence (lundi-samedi, 9h-18h, 45 min).")
+        if not self._libre(conseiller, d):   # revérification juste avant l'écriture
+            return erreur("CRENEAU_INDISPONIBLE", "Créneau pris entre-temps : proposer d'autres créneaux.")
+        self._d["evenements"][ev_id] = {
+            "conseiller": conseiller, "debut": d.isoformat(), "fin": (d + DUREE).isoformat(),
+            "bien_id": bien_id, "adresse": adresse, "client_nom": client_nom,
+            "client_email": client_email, "fil_id": fil_id,
+            "titre": f"Visite {bien_id} - {client_nom}",
+        }
+        self._sauver()
+        return {"ok": True, "evenement_id": ev_id, "deja_existante": False}
+
+    def deplacer_visite(self, evenement_id, nouveau_debut):
+        if self.panne:
+            return erreur("INDISPONIBLE", "Calendar injoignable (panne simulée).")
+        ev = self._d["evenements"].get(evenement_id)
+        if ev is None:
+            return erreur("INTROUVABLE", f"Aucune visite {evenement_id}.")
+        d = _date(nouveau_debut)
+        if not self._conforme(d) or not self._libre(ev["conseiller"], d, sauf=evenement_id):
+            return erreur("CRENEAU_INDISPONIBLE", "Nouveau créneau indisponible.")
+        ev["debut"], ev["fin"] = d.isoformat(), (d + DUREE).isoformat()
+        self._sauver()
+        return {"ok": True}
+
+    def annuler_visite(self, evenement_id):
+        if self.panne:
+            return erreur("INDISPONIBLE", "Calendar injoignable (panne simulée).")
+        if self._d["evenements"].pop(evenement_id, None) is None:
+            return erreur("INTROUVABLE", f"Aucune visite {evenement_id}.")
         self._sauver()
         return {"ok": True}
