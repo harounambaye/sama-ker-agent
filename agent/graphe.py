@@ -54,6 +54,27 @@ def construire_graphe(
     trace: Trace,
     client: anthropic.Anthropic | None = None,
 ):
+    """Graphe de l'exercice 1 : la boucle seule, de START à END."""
+    g = StateGraph(EtatAgent)
+    g.add_edge(START, "modele")
+    ajouter_boucle(g, cfg, outils, trace, client)
+    return g.compile()
+
+
+def ajouter_boucle(
+    g: StateGraph,
+    cfg: Config,
+    outils: BoiteAOutils,
+    trace: Trace,
+    client: anthropic.Anthropic | None = None,
+    suite: str = END,
+) -> None:
+    """Ajoute à `g` les nœuds modele, outils et limite.
+
+    Le graphe appelant relie son entrée à "modele" ; quand la boucle s'arrête
+    (réponse, limite, refus ou erreur), elle passe au nœud `suite`, qui lit
+    `statut` et `reponse` dans l'état.
+    """
     client = client or anthropic.Anthropic(max_retries=2, timeout=60.0)
     definitions = outils.definitions()
     systeme = [{"type": "text", "text": SYSTEME}]
@@ -136,21 +157,18 @@ def construire_graphe(
 
     def apres_modele(etat: EtatAgent) -> str:
         if etat["statut"] != "en_cours":
-            return END
+            return suite
         tokens = etat.get("tokens_entree", 0) + etat.get("tokens_sortie", 0)
         if etat["etapes"] >= cfg.max_etapes or tokens >= cfg.max_tokens_email:
             return "limite"
         return "outils"
 
-    g = StateGraph(EtatAgent)
     g.add_node("modele", appeler_modele)
     g.add_node("outils", executer_outils)
     g.add_node("limite", limite)
-    g.add_edge(START, "modele")
-    g.add_conditional_edges("modele", apres_modele, ["outils", "limite", END])
+    g.add_conditional_edges("modele", apres_modele, ["outils", "limite", suite])
     g.add_edge("outils", "modele")
-    g.add_edge("limite", END)
-    return g.compile()
+    g.add_edge("limite", suite)
 
 
 def executer(graphe, cfg: Config, demande: str, trace: Trace) -> EtatAgent:
