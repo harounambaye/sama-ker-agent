@@ -26,6 +26,7 @@ class Proposition(TypedDict, total=False):
     arguments: dict          # arguments exacts de la fonction du contrat
     resume: str              # ce que le conseiller lit pour décider
     texte: str               # corps du brouillon, modifiable (envoyer_brouillon)
+    note: str                # note interne du modèle pour le conseiller, jamais envoyée
     fil_id: str
 
 

@@ -48,8 +48,10 @@ def afficher_attente(attente: dict) -> None:
     print(f"\n=== Fil {attente['fil_id']} · {p['type']} · {p['resume']}")
     if attente.get("incident"):
         print(f"!!! {attente['incident']}")
+    if p.get("note"):
+        print("--- note interne (jamais envoyée) ---\n" + p["note"])
     if p.get("texte"):
-        print("--- texte proposé ---\n" + p["texte"] + "\n---------------------")
+        print("--- email qui sera envoyé au client ---\n" + p["texte"] + "\n---------------------")
     else:
         print(f"arguments : {p['arguments']}")
 
