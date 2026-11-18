@@ -515,3 +515,184 @@ def test_creer_visite_confirme_un_doublon_apres_un_conflit_google():
     }
     assert service.ressource_evenements.nombre_get == 2
     assert service.ressource_evenements.nombre_insert == 1
+
+# tests du déplacement de visite
+
+class FauxEvenementsDeplacement:
+    def __init__(self, agendas):
+        self.agendas = agendas
+        self.calendrier_modifie = None
+        self.corps_modification = None
+        self.nombre_patch = 0
+
+    def get(self, calendarId, eventId):
+        def executer():
+            evenement = self.agendas.get(calendarId, {}).get(eventId)
+
+            if evenement is None:
+                raise HttpError(
+                    httplib2.Response({"status": "404", "reason": "Not Found"}),
+                    b"not found",
+                    uri="https://calendar.googleapis.com/",
+                )
+
+            return evenement
+
+        return FauxRequeteEvenement(executer)
+
+    def list(self, calendarId, **kwargs):
+        def executer():
+            evenements = list(self.agendas.get(calendarId, {}).values())
+            return {"items": evenements}
+
+        return FauxRequeteEvenement(executer)
+
+    def patch(self, calendarId, eventId, body):
+        def executer():
+            self.nombre_patch += 1
+            self.calendrier_modifie = calendarId
+            self.corps_modification = body
+
+            evenement = self.agendas[calendarId][eventId]
+            evenement.update(body)
+
+            return evenement
+
+        return FauxRequeteEvenement(executer)
+
+
+class FauxServiceDeplacement:
+    def __init__(self, agendas):
+        self.ressource_evenements = FauxEvenementsDeplacement(agendas)
+
+    def events(self):
+        return self.ressource_evenements
+
+
+def creer_agenda_deplacement(evenement=None, calendrier="agenda_moussa"):
+    agendas = {
+        "agenda_aminata": {},
+        "agenda_moussa": {},
+        "agenda_khady": {},
+    }
+
+    if evenement is not None:
+        agendas[calendrier][evenement["id"]] = evenement
+
+    service = FauxServiceDeplacement(agendas)
+
+    agenda = calendar.AgendaGoogle(
+        service,
+        {
+            "aminata": "agenda_aminata",
+            "moussa": "agenda_moussa",
+            "khady": "agenda_khady",
+        },
+    )
+
+    return agenda, service
+
+
+def creer_evenement_test():
+    return {
+        "id": "evenement-test",
+        "summary": "Visite appartement",
+        "location": "Dakar",
+        "description": "Visite avec le client",
+        "start": {
+            "dateTime": "2026-11-18T09:00:00+00:00",
+            "timeZone": "Africa/Dakar",
+        },
+        "end": {
+            "dateTime": "2026-11-18T09:45:00+00:00",
+            "timeZone": "Africa/Dakar",
+        },
+    }
+
+
+def test_deplacer_visite_avec_succes_exclut_evenement_actuel():
+    evenement = creer_evenement_test()
+    agenda, service = creer_agenda_deplacement(evenement)
+
+    resultat = agenda.deplacer_visite(
+        "evenement-test",
+        "2026-11-18T09:15:00+00:00",
+    )
+
+    assert resultat == {"ok": True}
+    assert service.ressource_evenements.nombre_patch == 1
+    assert service.ressource_evenements.calendrier_modifie == "agenda_moussa"
+    assert service.ressource_evenements.corps_modification["start"]["dateTime"] == (
+        "2026-11-18T09:15:00+00:00"
+    )
+    assert service.ressource_evenements.corps_modification["end"]["dateTime"] == (
+        "2026-11-18T10:00:00+00:00"
+    )
+    assert evenement["summary"] == "Visite appartement"
+    assert evenement["location"] == "Dakar"
+
+
+def test_deplacer_visite_refuse_un_creneau_occupe():
+    evenement = creer_evenement_test()
+    autre_evenement = {
+        "id": "autre-evenement",
+        "start": {"dateTime": "2026-11-18T10:00:00+00:00"},
+        "end": {"dateTime": "2026-11-18T10:45:00+00:00"},
+    }
+
+    agenda, service = creer_agenda_deplacement(evenement)
+    service.ressource_evenements.agendas["agenda_moussa"][
+        "autre-evenement"
+    ] = autre_evenement
+
+    resultat = agenda.deplacer_visite(
+        "evenement-test",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "CRENEAU_INDISPONIBLE"
+    assert service.ressource_evenements.nombre_patch == 0
+
+
+def test_deplacer_visite_refuse_un_evenement_introuvable():
+    agenda, service = creer_agenda_deplacement()
+
+    resultat = agenda.deplacer_visite(
+        "evenement-inconnu",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+    assert service.ressource_evenements.nombre_patch == 0
+
+
+def test_deplacer_visite_refuse_une_date_invalide():
+    evenement = creer_evenement_test()
+    agenda, service = creer_agenda_deplacement(evenement)
+
+    resultat = agenda.deplacer_visite(
+        "evenement-test",
+        "2026-11-18 10:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+    assert service.ressource_evenements.nombre_patch == 0
+
+
+def test_deplacer_visite_retrouve_le_bon_agenda():
+    evenement = creer_evenement_test()
+    agenda, service = creer_agenda_deplacement(
+        evenement,
+        calendrier="agenda_khady",
+    )
+
+    resultat = agenda.deplacer_visite(
+        "evenement-test",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat == {"ok": True}
+    assert service.ressource_evenements.calendrier_modifie == "agenda_khady"
