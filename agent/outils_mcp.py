@@ -94,7 +94,9 @@ class OutilsMCP:
         async def session() -> None:
             self._arret = asyncio.Event()
             try:
-                async with Client(self._cible) as client:
+                # mode="legacy" : poignée de main initialize classique. En mcp 2.3, la sonde
+                # server/discover du mode "auto" coupe la connexion HTTP au lieu de se replier.
+                async with Client(self._cible, mode="legacy") as client:
                     self._client = client
                     pret.set()
                     await self._arret.wait()
