@@ -795,3 +795,92 @@ def test_annuler_visite_retrouve_le_bon_agenda():
 
     assert resultat == {"ok": True}
     assert service.ressource_evenements.calendrier_supprime == "agenda_khady"
+
+class FauxRequeteEtat:
+    def __init__(self, calendrier_id, erreur=None):
+        self.calendrier_id = calendrier_id
+        self.erreur = erreur
+
+    def execute(self):
+        if self.erreur:
+            raise self.erreur
+        return {"items": []}
+
+
+class FauxEvenementsEtat:
+    def __init__(self, erreurs=None):
+        self.erreurs = erreurs or {}
+        self.appels = []
+
+    def list(self, calendarId, maxResults):
+        self.appels.append((calendarId, maxResults))
+        return FauxRequeteEtat(
+            calendarId,
+            self.erreurs.get(calendarId),
+        )
+
+
+class FauxServiceEtat:
+    def __init__(self, erreurs=None):
+        self.evenements = FauxEvenementsEtat(erreurs)
+
+    def events(self):
+        return self.evenements
+
+
+def creer_agenda_etat(erreurs=None):
+    service = FauxServiceEtat(erreurs)
+    agenda = calendar.AgendaGoogle(
+        service,
+        {
+            "aminata": "agenda_aminata",
+            "moussa": "agenda_moussa",
+            "khady": "agenda_khady",
+        },
+    )
+    return agenda, service
+
+
+def test_verifier_etat_google_calendar():
+    agenda, service = creer_agenda_etat()
+
+    resultat = agenda.verifier_etat()
+
+    assert resultat["ok"] is True
+    assert isinstance(resultat["latence_ms"], int)
+    assert resultat["latence_ms"] >= 0
+    assert service.evenements.appels == [
+        ("agenda_aminata", 1),
+        ("agenda_moussa", 1),
+        ("agenda_khady", 1),
+    ]
+
+
+def test_verifier_etat_refus_autorisation():
+    erreur_http = HttpError(
+        httplib2.Response({"status": "403"}),
+        b"forbidden",
+    )
+    agenda, _ = creer_agenda_etat(
+        {"agenda_aminata": erreur_http}
+    )
+
+    resultat = agenda.verifier_etat()
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "AUTORISATION"
+
+
+def test_verifier_etat_calendrier_introuvable():
+    erreur_http = HttpError(
+        httplib2.Response({"status": "404"}),
+        b"not found",
+    )
+    agenda, _ = creer_agenda_etat(
+        {"agenda_moussa": erreur_http}
+    )
+
+    resultat = agenda.verifier_etat()
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
