@@ -162,6 +162,10 @@ class FauxUsers:
         self._messages = FauxMessages(pages, messages)
         self._threads = FauxThreads(fils or {})
         self._drafts = FauxDrafts()
+        self.resultat_profil = {
+            "emailAddress": "test@example.com",
+        }
+        self.appel_profil = None
 
     def labels(self):
         return self._labels
@@ -174,6 +178,10 @@ class FauxUsers:
 
     def drafts(self):
         return self._drafts
+
+    def getProfile(self, **kwargs):
+        self.appel_profil = kwargs
+        return FauxRequete(self.resultat_profil)
 
 
 class FauxServiceGmail:
@@ -689,3 +697,29 @@ def test_changer_libelle_message_introuvable():
 
     assert resultat["ok"] is False
     assert resultat["code"] == "INTROUVABLE"
+
+
+def test_verifier_etat_gmail_avec_succes(monkeypatch):
+    service = FauxServiceGmail([], {}, {})
+    moments = iter([10.0, 10.125])
+    monkeypatch.setattr(gmail, "perf_counter", lambda: next(moments))
+
+    resultat = gmail.MessagerieGoogle(service).verifier_etat()
+
+    assert resultat == {
+        "ok": True,
+        "latence_ms": 125,
+    }
+    assert service._users.appel_profil == {"userId": "me"}
+
+
+def test_verifier_etat_gmail_erreur_autorisation():
+    service = FauxServiceGmail([], {}, {})
+    erreur_api = RuntimeError("Acces refuse")
+    erreur_api.resp = SimpleNamespace(status=403)
+    service._users.resultat_profil = erreur_api
+
+    resultat = gmail.MessagerieGoogle(service).verifier_etat()
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "AUTORISATION"
