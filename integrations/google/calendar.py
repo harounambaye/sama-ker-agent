@@ -11,6 +11,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from contracts import (
+    Confirmation,
     Creneau,
     ResultatCreneaux,
     ResultatVisite,
@@ -500,3 +501,236 @@ class AgendaGoogle:
             jour += timedelta(days=1)
 
         return {"ok": True, "creneaux": creneaux}
+
+
+
+    def deplacer_visite(
+        self,
+        evenement_id: str,
+        nouveau_debut: str,
+    ) -> Confirmation | Erreur:
+        """Déplace une visite après vérification du nouveau créneau."""
+        if (
+            not isinstance(evenement_id, str)
+            or not evenement_id.strip()
+            or not isinstance(nouveau_debut, str)
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "L'identifiant ou la nouvelle date est invalide.",
+            )
+
+        debut = _parser_date(nouveau_debut)
+
+        if debut is None:
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "La nouvelle date doit être au format ISO 8601 avec fuseau.",
+            )
+
+        duree = timedelta(minutes=DUREE_VISITE_MIN)
+        fin = debut + duree
+
+        if (
+            debut.minute % PAS_CRENEAU_MIN != 0
+            or debut.second != 0
+            or debut.microsecond != 0
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "Le début doit respecter un intervalle de 15 minutes.",
+            )
+
+        if (
+            debut.weekday() not in JOURS_OUVRES
+            or debut.time() < time(HEURE_OUVERTURE)
+            or fin.time() > time(HEURE_FERMETURE)
+            or fin.date() != debut.date()
+        ):
+            return erreur(
+                "CRENEAU_INDISPONIBLE",
+                "La visite doit respecter les jours et horaires d'ouverture.",
+            )
+
+        try:
+            evenements = self._service.events()
+            evenement_id = evenement_id.strip()
+        except Exception:
+            return erreur(
+                "INDISPONIBLE",
+                "Impossible de consulter Google Calendar.",
+            )
+        evenement = None
+        calendrier_trouve = None
+
+        for calendrier_id in self._calendriers.values():
+            try:
+                evenement = evenements.get(
+                    calendarId=calendrier_id,
+                    eventId=evenement_id,
+                ).execute()
+                calendrier_trouve = calendrier_id
+                break
+
+            except HttpError as exc:
+                statut = exc.resp.status
+
+                if statut == 404:
+                    continue
+
+                if statut in (401, 403):
+                    return erreur(
+                        "AUTORISATION",
+                        "Accès refusé à Google Calendar.",
+                    )
+
+                return erreur(
+                    "INDISPONIBLE",
+                    "Impossible de retrouver la visite dans Google Calendar.",
+                )
+
+            except Exception:
+                return erreur(
+                    "INDISPONIBLE",
+                    "Impossible de consulter Google Calendar.",
+                )
+
+        if evenement is None or calendrier_trouve is None:
+            return erreur(
+                "INTROUVABLE",
+                "La visite demandée est introuvable.",
+            )
+
+        def parser_horaire(valeur: dict) -> datetime | None:
+            """Convertit un horaire Google en date locale."""
+            date_heure = valeur.get("dateTime")
+
+            if date_heure:
+                return _parser_date(date_heure)
+
+            date_jour = valeur.get("date")
+
+            if date_jour:
+                try:
+                    jour = datetime.fromisoformat(date_jour).date()
+                    return datetime.combine(
+                        jour,
+                        time.min,
+                        tzinfo=ZoneInfo(FUSEAU),
+                    )
+                except (TypeError, ValueError):
+                    return None
+
+            return None
+
+        try:
+            page_token = None
+
+            while True:
+                parametres = {
+                    "calendarId": calendrier_trouve,
+                    "timeMin": debut.isoformat(),
+                    "timeMax": fin.isoformat(),
+                    "singleEvents": True,
+                    "orderBy": "startTime",
+                    "maxResults": 2500,
+                }
+
+                if page_token:
+                    parametres["pageToken"] = page_token
+
+                reponse = evenements.list(**parametres).execute()
+
+                if not isinstance(reponse, dict):
+                    return erreur(
+                        "INTERNE",
+                        "La réponse de Google Calendar est invalide.",
+                    )
+
+                liste_evenements = reponse.get("items", [])
+
+                if not isinstance(liste_evenements, list):
+                    return erreur(
+                        "INTERNE",
+                        "La liste des événements Google est invalide.",
+                    )
+
+                for autre in liste_evenements:
+                    if (
+                        autre.get("id") == evenement_id
+                        or autre.get("status") == "cancelled"
+                    ):
+                        continue
+
+                    debut_autre = parser_horaire(autre.get("start", {}))
+                    fin_autre = parser_horaire(autre.get("end", {}))
+
+                    if (
+                        debut_autre is None
+                        or fin_autre is None
+                        or debut_autre >= fin_autre
+                    ):
+                        return erreur(
+                            "INTERNE",
+                            "Un événement de l'agenda possède des horaires invalides.",
+                        )
+
+                    if debut < fin_autre and fin > debut_autre:
+                        return erreur(
+                            "CRENEAU_INDISPONIBLE",
+                            "Le nouveau créneau est déjà occupé.",
+                        )
+
+                page_token = reponse.get("nextPageToken")
+
+                if not page_token:
+                    break
+
+            evenements.patch(
+                calendarId=calendrier_trouve,
+                eventId=evenement_id,
+                body={
+                    "start": {
+                        "dateTime": debut.isoformat(),
+                        "timeZone": FUSEAU,
+                    },
+                    "end": {
+                        "dateTime": fin.isoformat(),
+                        "timeZone": FUSEAU,
+                    },
+                },
+            ).execute()
+
+            return {"ok": True}
+
+        except HttpError as exc:
+            statut = exc.resp.status
+
+            if statut in (401, 403):
+                return erreur(
+                    "AUTORISATION",
+                    "Accès refusé lors du déplacement de la visite.",
+                )
+
+            if statut == 404:
+                return erreur(
+                    "INTROUVABLE",
+                    "La visite ou l'agenda n'existe plus.",
+                )
+
+            if statut == 409:
+                return erreur(
+                    "CRENEAU_INDISPONIBLE",
+                    "Le créneau vient d'être réservé.",
+                )
+
+            return erreur(
+                "INDISPONIBLE",
+                "Google Calendar n'a pas pu déplacer la visite.",
+            )
+
+        except Exception:
+            return erreur(
+                "INDISPONIBLE",
+                "Une erreur empêche le déplacement de la visite.",
+            )
