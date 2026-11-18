@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
-from email.message import Message
+from email.message import EmailMessage, Message
 from html.parser import HTMLParser
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -162,7 +162,7 @@ def _erreur_api(exc: Exception) -> Erreur:
 
     return erreur(
         "INTERNE",
-        f"Erreur pendant la lecture Gmail ({type(exc).__name__}).",
+        f"Erreur pendant une operation Gmail ({type(exc).__name__}).",
     )
 
 
@@ -279,6 +279,110 @@ class MessagerieGoogle:
                     break
 
             return {"ok": True, "demandes": demandes}
+
+        except Exception as exc:
+            return _erreur_api(exc)
+
+    def creer_brouillon(
+        self,
+        fil_id: str,
+        texte: str,
+    ) -> dict[str, Any] | Erreur:
+        """Cree un brouillon de reponse dans le fil d'origine."""
+        if (
+            not isinstance(fil_id, str)
+            or not fil_id.strip()
+            or not isinstance(texte, str)
+            or not texte.strip()
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "Le fil et le texte de reponse sont obligatoires.",
+            )
+
+        try:
+            fil = (
+                self._service.users()
+                .threads()
+                .get(
+                    userId="me",
+                    id=fil_id,
+                    format="full",
+                )
+                .execute()
+            )
+
+            messages = fil.get("messages", [])
+
+            if not messages:
+                return erreur(
+                    "INTROUVABLE",
+                    "Aucun message trouve dans ce fil Gmail.",
+                )
+
+            dernier_message = messages[-1]
+            entetes = {
+                entete["name"].lower(): entete["value"]
+                for entete in dernier_message.get(
+                    "payload", {}
+                ).get("headers", [])
+            }
+
+            expediteur = entetes.get("from", "").strip()
+            sujet = entetes.get("subject", "").strip()
+
+            if not expediteur:
+                return erreur(
+                    "INTROUVABLE",
+                    "L'expediteur du dernier message est introuvable.",
+                )
+
+            message = EmailMessage()
+            message["To"] = expediteur
+
+            if sujet.lower().startswith("re:"):
+                message["Subject"] = sujet
+            else:
+                message["Subject"] = f"Re: {sujet}" if sujet else "Re: (sans sujet)"
+
+            message_id = entetes.get("message-id", "").strip()
+            references = entetes.get("references", "").strip()
+
+            if message_id:
+                message["In-Reply-To"] = message_id
+
+            if references and message_id:
+                message["References"] = f"{references} {message_id}"
+            elif references:
+                message["References"] = references
+            elif message_id:
+                message["References"] = message_id
+
+            message.set_content(texte.strip())
+
+            contenu_encode = base64.urlsafe_b64encode(
+                message.as_bytes()
+            ).decode("ascii").rstrip("=")
+
+            brouillon = (
+                self._service.users()
+                .drafts()
+                .create(
+                    userId="me",
+                    body={
+                        "message": {
+                            "threadId": fil_id,
+                            "raw": contenu_encode,
+                        }
+                    },
+                )
+                .execute()
+            )
+
+            return {
+                "ok": True,
+                "brouillon_id": brouillon["id"],
+            }
 
         except Exception as exc:
             return _erreur_api(exc)

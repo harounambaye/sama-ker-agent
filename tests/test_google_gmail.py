@@ -2,6 +2,8 @@
 
 import base64
 from datetime import datetime, timezone
+from email import policy
+from email.parser import BytesParser
 from types import SimpleNamespace
 
 from integrations.google import gmail
@@ -113,10 +115,31 @@ class FauxMessages:
         return FauxRequete(self.messages[kwargs["id"]])
 
 
+class FauxThreads:
+    def __init__(self, fils):
+        self.fils = fils
+        self.appels = []
+
+    def get(self, **kwargs):
+        self.appels.append(kwargs)
+        return FauxRequete(self.fils[kwargs["id"]])
+
+
+class FauxDrafts:
+    def __init__(self):
+        self.corps = None
+
+    def create(self, **kwargs):
+        self.corps = kwargs
+        return FauxRequete({"id": "brouillon-1"})
+
+
 class FauxUsers:
-    def __init__(self, libelles, pages, messages):
+    def __init__(self, libelles, pages, messages, fils=None):
         self._labels = FauxLabels(libelles)
         self._messages = FauxMessages(pages, messages)
+        self._threads = FauxThreads(fils or {})
+        self._drafts = FauxDrafts()
 
     def labels(self):
         return self._labels
@@ -124,10 +147,16 @@ class FauxUsers:
     def messages(self):
         return self._messages
 
+    def threads(self):
+        return self._threads
+
+    def drafts(self):
+        return self._drafts
+
 
 class FauxServiceGmail:
-    def __init__(self, libelles, pages, messages):
-        self._users = FauxUsers(libelles, pages, messages)
+    def __init__(self, libelles, pages, messages, fils=None):
+        self._users = FauxUsers(libelles, pages, messages, fils)
 
     def users(self):
         return self._users
@@ -367,3 +396,136 @@ def test_lire_demandes_ignore_piece_jointe():
 
     assert resultat["ok"] is True
     assert resultat["demandes"][0]["corps"] == "Corps du message"
+
+def test_creer_brouillon_dans_fil_existant():
+    ancien = creer_message(
+        "message-ancien",
+        "fil-1",
+        "Premier message",
+        1795000000000,
+    )
+
+    dernier = creer_message(
+        "message-dernier",
+        "fil-1",
+        "Dernier message",
+        1795000000000,
+    )
+
+    dernier["payload"]["headers"].extend([
+        {"name": "Message-ID", "value": "<dernier@example.com>"},
+        {
+            "name": "References",
+            "value": "<premier@example.com>",
+        },
+    ])
+
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+        fils={
+            "fil-1": {
+                "messages": [ancien, dernier],
+            }
+        },
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.creer_brouillon(
+        "fil-1",
+        "Bonjour, votre demande a bien ete recue.",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "brouillon_id": "brouillon-1",
+    }
+
+    appel = service._users._threads.appels[0]
+    assert appel["id"] == "fil-1"
+    assert appel["format"] == "full"
+
+    corps = service._users._drafts.corps["body"]
+    assert corps["message"]["threadId"] == "fil-1"
+
+    donnees = corps["message"]["raw"]
+    donnees += "=" * (-len(donnees) % 4)
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(donnees)
+    )
+
+    assert message["To"] == "Client <client@example.com>"
+    assert message["Subject"] == "Re: Demande de visite"
+    assert message["In-Reply-To"] == "<dernier@example.com>"
+    assert message["References"] == (
+        "<premier@example.com> <dernier@example.com>"
+    )
+    assert message.get_content().strip() == (
+        "Bonjour, votre demande a bien ete recue."
+    )
+
+
+def test_creer_brouillon_conserve_sujet_re_existant():
+    dernier = creer_message(
+        "message-1",
+        "fil-1",
+        "Message",
+        1795000000000,
+    )
+    dernier["payload"]["headers"].append({
+        "name": "Subject",
+        "value": "Re: Demande de visite",
+    })
+
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+        fils={"fil-1": {"messages": [dernier]}},
+    )
+
+    resultat = gmail.MessagerieGoogle(service).creer_brouillon(
+        "fil-1",
+        "Ma reponse",
+    )
+
+    assert resultat["ok"] is True
+
+    donnees = service._users._drafts.corps["body"]["message"]["raw"]
+    donnees += "=" * (-len(donnees) % 4)
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(donnees)
+    )
+
+    assert message["Subject"] == "Re: Demande de visite"
+
+
+def test_creer_brouillon_arguments_invalides():
+    service = FauxServiceGmail([], {}, {})
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.creer_brouillon(" ", "Une reponse")
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+
+def test_creer_brouillon_fil_vide():
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+        fils={"fil-1": {"messages": []}},
+    )
+
+    resultat = gmail.MessagerieGoogle(service).creer_brouillon(
+        "fil-1",
+        "Une reponse",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
