@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from time import perf_counter
 from datetime import datetime, timezone
 from email.header import decode_header, make_header
 from email.message import EmailMessage, Message
@@ -494,6 +495,28 @@ class MessagerieGoogle:
             )
 
             return {"ok": True}
+
+        except Exception as exc:
+            return _erreur_api(exc)
+
+
+    def verifier_etat(self) -> dict[str, Any] | Erreur:
+        """Verifie l'acces a Gmail et mesure sa latence."""
+        debut = perf_counter()
+
+        try:
+            (
+                self._service.users()
+                .getProfile(userId="me")
+                .execute()
+            )
+
+            latence_ms = int((perf_counter() - debut) * 1000)
+
+            return {
+                "ok": True,
+                "latence_ms": latence_ms,
+            }
 
         except Exception as exc:
             return _erreur_api(exc)
