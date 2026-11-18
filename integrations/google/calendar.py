@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, time, timedelta
+from time import perf_counter
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -18,6 +19,7 @@ from contracts import (
     Conseiller,
     DUREE_VISITE_MIN,
     Erreur,
+    Etat,
     FUSEAU,
     HEURE_FERMETURE,
     HEURE_OUVERTURE,
@@ -829,4 +831,56 @@ class AgendaGoogle:
             return erreur(
                 "INDISPONIBLE",
                 "Une erreur empêche l'annulation de la visite.",
+            )
+
+    def verifier_etat(self) -> Etat | Erreur:
+        """Verifie l'acces en lecture aux trois agendas Google."""
+        debut = perf_counter()
+
+        try:
+            evenements = self._service.events()
+
+            for calendrier_id in self._calendriers.values():
+                resultat = evenements.list(
+                    calendarId=calendrier_id,
+                    maxResults=1,
+                ).execute()
+
+                if not isinstance(resultat, dict):
+                    return erreur(
+                        "INTERNE",
+                        "La reponse de Google Calendar est invalide.",
+                    )
+
+            latence_ms = int((perf_counter() - debut) * 1000)
+
+            return {
+                "ok": True,
+                "latence_ms": latence_ms,
+            }
+
+        except HttpError as exc:
+            statut = exc.resp.status
+
+            if statut in (401, 403):
+                return erreur(
+                    "AUTORISATION",
+                    "Acces refuse a Google Calendar.",
+                )
+
+            if statut == 404:
+                return erreur(
+                    "INTROUVABLE",
+                    "Un agenda Google Calendar est introuvable.",
+                )
+
+            return erreur(
+                "INDISPONIBLE",
+                "Google Calendar ne repond pas correctement.",
+            )
+
+        except Exception:
+            return erreur(
+                "INDISPONIBLE",
+                "Impossible de verifier la connexion a Google Calendar.",
             )
