@@ -501,15 +501,38 @@ class MessagerieGoogle:
 
 
     def verifier_etat(self) -> dict[str, Any] | Erreur:
-        """Verifie l'acces a Gmail et mesure sa latence."""
+        """Verifie l'acces a Gmail et la presence des quatre libelles."""
         debut = perf_counter()
 
         try:
-            (
-                self._service.users()
-                .getProfile(userId="me")
+            utilisateurs = self._service.users()
+
+            utilisateurs.getProfile(userId="me").execute()
+
+            resultat_libelles = (
+                utilisateurs.labels()
+                .list(userId="me")
                 .execute()
             )
+
+            noms_libelles = {
+                libelle.get("name")
+                for libelle in resultat_libelles.get("labels", [])
+            }
+
+            libelles_manquants = [
+                nom
+                for nom in LIBELLES.values()
+                if nom not in noms_libelles
+            ]
+
+            if libelles_manquants:
+                return erreur(
+                    "INTROUVABLE",
+                    "Libelles Gmail manquants : "
+                    + ", ".join(libelles_manquants)
+                    + ".",
+                )
 
             latence_ms = int((perf_counter() - debut) * 1000)
 

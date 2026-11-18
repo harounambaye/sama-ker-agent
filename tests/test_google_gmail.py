@@ -96,8 +96,10 @@ class FauxLabels:
     def __init__(self, libelles):
         self.libelles = libelles
         self.appels_creation = []
+        self.appels_liste = []
 
     def list(self, **kwargs):
+        self.appels_liste.append(kwargs)
         return FauxRequete({"labels": self.libelles})
 
     def create(self, **kwargs):
@@ -700,7 +702,11 @@ def test_changer_libelle_message_introuvable():
 
 
 def test_verifier_etat_gmail_avec_succes(monkeypatch):
-    service = FauxServiceGmail([], {}, {})
+    libelles = [
+        {"id": f"label-{index}", "name": nom}
+        for index, nom in enumerate(gmail.LIBELLES.values())
+    ]
+    service = FauxServiceGmail(libelles, {}, {})
     moments = iter([10.0, 10.125])
     monkeypatch.setattr(gmail, "perf_counter", lambda: next(moments))
 
@@ -711,6 +717,24 @@ def test_verifier_etat_gmail_avec_succes(monkeypatch):
         "latence_ms": 125,
     }
     assert service._users.appel_profil == {"userId": "me"}
+    assert service._users._labels.appels_liste == [{"userId": "me"}]
+    assert service._users._labels.appels_creation == []
+
+
+def test_verifier_etat_gmail_libelle_manquant():
+    libelles = [
+        {"id": f"label-{index}", "name": nom}
+        for index, nom in enumerate(list(gmail.LIBELLES.values())[:-1])
+    ]
+    service = FauxServiceGmail(libelles, {}, {})
+
+    resultat = gmail.MessagerieGoogle(service).verifier_etat()
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+    assert gmail.LIBELLES["transmis"] in resultat["message"]
+    assert service._users._labels.appels_creation == []
+    assert service._users._labels.appels_liste == [{"userId": "me"}]
 
 
 def test_verifier_etat_gmail_erreur_autorisation():
