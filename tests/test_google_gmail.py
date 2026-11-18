@@ -1,5 +1,7 @@
 """Tests hors ligne de l'integration Google Gmail."""
 
+import base64
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from integrations.google import gmail
@@ -76,3 +78,292 @@ def test_erreur_initialisation_service(monkeypatch):
     assert resultat["ok"] is False
     assert resultat["code"] == "INDISPONIBLE"
     assert "RuntimeError" in resultat["message"]
+
+
+class FauxRequete:
+    def __init__(self, resultat):
+        self.resultat = resultat
+
+    def execute(self):
+        if isinstance(self.resultat, Exception):
+            raise self.resultat
+        return self.resultat
+
+
+class FauxLabels:
+    def __init__(self, libelles):
+        self.libelles = libelles
+
+    def list(self, **kwargs):
+        return FauxRequete({"labels": self.libelles})
+
+
+class FauxMessages:
+    def __init__(self, pages, messages):
+        self.pages = pages
+        self.messages = messages
+        self.appels_pages = []
+
+    def list(self, **kwargs):
+        self.appels_pages.append(kwargs)
+        token = kwargs.get("pageToken")
+        return FauxRequete(self.pages[token])
+
+    def get(self, **kwargs):
+        return FauxRequete(self.messages[kwargs["id"]])
+
+
+class FauxUsers:
+    def __init__(self, libelles, pages, messages):
+        self._labels = FauxLabels(libelles)
+        self._messages = FauxMessages(pages, messages)
+
+    def labels(self):
+        return self._labels
+
+    def messages(self):
+        return self._messages
+
+
+class FauxServiceGmail:
+    def __init__(self, libelles, pages, messages):
+        self._users = FauxUsers(libelles, pages, messages)
+
+    def users(self):
+        return self._users
+
+
+def encoder_base64(texte):
+    return base64.urlsafe_b64encode(
+        texte.encode("utf-8")
+    ).decode("ascii").rstrip("=")
+
+
+def creer_message(message_id, fil_id, corps, date_ms):
+    return {
+        "id": message_id,
+        "threadId": fil_id,
+        "internalDate": str(date_ms),
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [
+                {"name": "From", "value": "Client <client@example.com>"},
+                {"name": "Subject", "value": "Demande de visite"},
+            ],
+            "body": {"data": encoder_base64(corps)},
+        },
+    }
+
+
+def test_lire_demandes_sans_libelle():
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.lire_demandes()
+
+    assert resultat == {"ok": True, "demandes": []}
+
+
+def test_lire_demandes_message_simple():
+    date_ms = int(
+        datetime(2026, 11, 18, 10, 30, tzinfo=timezone.utc).timestamp()
+        * 1000
+    )
+
+    message = creer_message(
+        "message-1",
+        "fil-1",
+        "Bonjour, je cherche un appartement.",
+        date_ms,
+    )
+
+    service = FauxServiceGmail(
+        libelles=[
+            {"id": "label-1", "name": "SamaKer/A traiter"}
+        ],
+        pages={
+            None: {"messages": [{"id": "message-1"}]}
+        },
+        messages={"message-1": message},
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.lire_demandes()
+
+    assert resultat["ok"] is True
+    assert len(resultat["demandes"]) == 1
+
+    demande = resultat["demandes"][0]
+
+    assert demande["message_id"] == "message-1"
+    assert demande["fil_id"] == "fil-1"
+    assert demande["expediteur"] == "Client <client@example.com>"
+    assert demande["sujet"] == "Demande de visite"
+    assert demande["corps"] == "Bonjour, je cherche un appartement."
+    assert demande["recu_le"] == "2026-11-18T10:30:00+00:00"
+
+
+def test_lire_demandes_pagination():
+    premier = creer_message("message-1", "fil-1", "Premier", 1795000000000)
+    second = creer_message("message-2", "fil-2", "Second", 1795000000000)
+
+    service = FauxServiceGmail(
+        libelles=[
+            {"id": "label-1", "name": "SamaKer/A traiter"}
+        ],
+        pages={
+            None: {
+                "messages": [{"id": "message-1"}],
+                "nextPageToken": "page-2",
+            },
+            "page-2": {
+                "messages": [{"id": "message-2"}],
+            },
+        },
+        messages={
+            "message-1": premier,
+            "message-2": second,
+        },
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.lire_demandes()
+
+    assert resultat["ok"] is True
+    assert len(resultat["demandes"]) == 2
+    assert resultat["demandes"][0]["corps"] == "Premier"
+    assert resultat["demandes"][1]["corps"] == "Second"
+
+    appels = service._users._messages.appels_pages
+    assert len(appels) == 2
+    assert appels[0]["labelIds"] == ["label-1"]
+    assert appels[1]["pageToken"] == "page-2"
+
+
+def test_lire_demandes_erreur_autorisation():
+    class FauxErreurAPI(Exception):
+        resp = type("Reponse", (), {"status": 403})()
+
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+    )
+    service._users._labels.list = lambda **kwargs: FauxRequete(
+        FauxErreurAPI()
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.lire_demandes()
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "AUTORISATION"
+
+
+def test_lire_demandes_multipart_privilegie_texte_brut():
+    message = creer_message("message-1", "fil-1", "", 1795000000000)
+
+    message["payload"] = {
+        "mimeType": "multipart/alternative",
+        "headers": [
+            {"name": "From", "value": "Client <client@example.com>"},
+            {"name": "Subject", "value": "Demande"},
+        ],
+        "parts": [
+            {
+                "mimeType": "text/plain",
+                "body": {"data": encoder_base64("Texte brut du message")},
+            },
+            {
+                "mimeType": "text/html",
+                "body": {
+                    "data": encoder_base64("<p>Version HTML</p>")
+                },
+            },
+        ],
+    }
+
+    service = FauxServiceGmail(
+        libelles=[
+            {"id": "label-1", "name": "SamaKer/A traiter"}
+        ],
+        pages={None: {"messages": [{"id": "message-1"}]}},
+        messages={"message-1": message},
+    )
+
+    resultat = gmail.MessagerieGoogle(service).lire_demandes()
+
+    assert resultat["ok"] is True
+    assert resultat["demandes"][0]["corps"] == "Texte brut du message"
+
+
+def test_lire_demandes_repli_sur_html():
+    message = creer_message("message-1", "fil-1", "", 1795000000000)
+
+    message["payload"] = {
+        "mimeType": "text/html",
+        "headers": [],
+        "body": {
+            "data": encoder_base64(
+                "<html><body><p>Bonjour</p><p>Je cherche un logement.</p></body></html>"
+            )
+        },
+    }
+
+    service = FauxServiceGmail(
+        libelles=[
+            {"id": "label-1", "name": "SamaKer/A traiter"}
+        ],
+        pages={None: {"messages": [{"id": "message-1"}]}},
+        messages={"message-1": message},
+    )
+
+    resultat = gmail.MessagerieGoogle(service).lire_demandes()
+
+    assert resultat["ok"] is True
+    assert resultat["demandes"][0]["corps"] == (
+        "Bonjour Je cherche un logement."
+    )
+
+
+def test_lire_demandes_ignore_piece_jointe():
+    message = creer_message("message-1", "fil-1", "", 1795000000000)
+
+    message["payload"] = {
+        "mimeType": "multipart/mixed",
+        "headers": [],
+        "parts": [
+            {
+                "mimeType": "text/plain",
+                "body": {"data": encoder_base64("Corps du message")},
+            },
+            {
+                "mimeType": "text/plain",
+                "filename": "document.txt",
+                "body": {
+                    "data": encoder_base64("Contenu de la piece jointe")
+                },
+            },
+        ],
+    }
+
+    service = FauxServiceGmail(
+        libelles=[
+            {"id": "label-1", "name": "SamaKer/A traiter"}
+        ],
+        pages={None: {"messages": [{"id": "message-1"}]}},
+        messages={"message-1": message},
+    )
+
+    resultat = gmail.MessagerieGoogle(service).lire_demandes()
+
+    assert resultat["ok"] is True
+    assert resultat["demandes"][0]["corps"] == "Corps du message"
