@@ -128,10 +128,16 @@ class FauxThreads:
 class FauxDrafts:
     def __init__(self):
         self.corps = None
+        self.appels_envoi = []
+        self.resultat_envoi = {"id": "message-envoye"}
 
     def create(self, **kwargs):
         self.corps = kwargs
         return FauxRequete({"id": "brouillon-1"})
+
+    def send(self, **kwargs):
+        self.appels_envoi.append(kwargs)
+        return FauxRequete(self.resultat_envoi)
 
 
 class FauxUsers:
@@ -525,6 +531,48 @@ def test_creer_brouillon_fil_vide():
     resultat = gmail.MessagerieGoogle(service).creer_brouillon(
         "fil-1",
         "Une reponse",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+
+
+def test_envoyer_brouillon_avec_succes():
+    service = FauxServiceGmail([], {}, {})
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.envoyer_brouillon("brouillon-1")
+
+    assert resultat == {"ok": True}
+    assert service._users._drafts.appels_envoi == [
+        {
+            "userId": "me",
+            "body": {"id": "brouillon-1"},
+        }
+    ]
+
+
+def test_envoyer_brouillon_identifiant_invalide():
+    service = FauxServiceGmail([], {}, {})
+    messagerie = gmail.MessagerieGoogle(service)
+
+    for brouillon_id in ("", "   ", None, 123):
+        resultat = messagerie.envoyer_brouillon(brouillon_id)
+
+        assert resultat["ok"] is False
+        assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+    assert service._users._drafts.appels_envoi == []
+
+
+def test_envoyer_brouillon_introuvable():
+    service = FauxServiceGmail([], {}, {})
+    erreur_api = RuntimeError("Brouillon absent")
+    erreur_api.resp = SimpleNamespace(status=404)
+    service._users._drafts.resultat_envoi = erreur_api
+
+    resultat = gmail.MessagerieGoogle(service).envoyer_brouillon(
+        "brouillon-inexistant"
     )
 
     assert resultat["ok"] is False

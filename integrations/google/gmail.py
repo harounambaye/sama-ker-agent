@@ -142,6 +142,12 @@ def _erreur_api(exc: Exception) -> Erreur:
     """Convertit une erreur technique en erreur du contrat."""
     statut = getattr(getattr(exc, "resp", None), "status", None)
 
+    if statut == 404:
+        return erreur(
+            "INTROUVABLE",
+            "Le brouillon Gmail est introuvable.",
+        )
+
     if statut in (401, 403):
         return erreur(
             "AUTORISATION",
@@ -383,6 +389,33 @@ class MessagerieGoogle:
                 "ok": True,
                 "brouillon_id": brouillon["id"],
             }
+
+        except Exception as exc:
+            return _erreur_api(exc)
+
+    def envoyer_brouillon(
+        self,
+        brouillon_id: str,
+    ) -> dict[str, Any] | Erreur:
+        """Envoie un brouillon apres validation humaine."""
+        if not isinstance(brouillon_id, str) or not brouillon_id.strip():
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "L'identifiant du brouillon est obligatoire.",
+            )
+
+        try:
+            (
+                self._service.users()
+                .drafts()
+                .send(
+                    userId="me",
+                    body={"id": brouillon_id.strip()},
+                )
+                .execute()
+            )
+
+            return {"ok": True}
 
         except Exception as exc:
             return _erreur_api(exc)
