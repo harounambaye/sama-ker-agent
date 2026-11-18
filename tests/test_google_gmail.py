@@ -95,9 +95,19 @@ class FauxRequete:
 class FauxLabels:
     def __init__(self, libelles):
         self.libelles = libelles
+        self.appels_creation = []
 
     def list(self, **kwargs):
         return FauxRequete({"labels": self.libelles})
+
+    def create(self, **kwargs):
+        self.appels_creation.append(kwargs)
+        libelle = {
+            "id": f"label-cree-{len(self.appels_creation)}",
+            "name": kwargs["body"]["name"],
+        }
+        self.libelles.append(libelle)
+        return FauxRequete(libelle)
 
 
 class FauxMessages:
@@ -105,6 +115,8 @@ class FauxMessages:
         self.pages = pages
         self.messages = messages
         self.appels_pages = []
+        self.appels_modification = []
+        self.resultat_modification = {}
 
     def list(self, **kwargs):
         self.appels_pages.append(kwargs)
@@ -113,6 +125,10 @@ class FauxMessages:
 
     def get(self, **kwargs):
         return FauxRequete(self.messages[kwargs["id"]])
+
+    def modify(self, **kwargs):
+        self.appels_modification.append(kwargs)
+        return FauxRequete(self.resultat_modification)
 
 
 class FauxThreads:
@@ -573,6 +589,102 @@ def test_envoyer_brouillon_introuvable():
 
     resultat = gmail.MessagerieGoogle(service).envoyer_brouillon(
         "brouillon-inexistant"
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+
+
+def test_changer_libelle_remplace_uniquement_les_etats_samaker():
+    libelles = [
+        {"id": "label-a-traiter", "name": "SamaKer/A traiter"},
+        {
+            "id": "label-attente",
+            "name": "SamaKer/En attente de validation",
+        },
+        {"id": "label-repondu", "name": "SamaKer/Repondu"},
+        {"id": "label-transmis", "name": "SamaKer/Transmis a un conseiller"},
+        {"id": "label-important", "name": "IMPORTANT"},
+    ]
+    service = FauxServiceGmail(libelles, {}, {})
+
+    resultat = gmail.MessagerieGoogle(service).changer_libelle(
+        "message-1",
+        "repondu",
+    )
+
+    assert resultat == {"ok": True}
+    assert service._users._labels.appels_creation == []
+    assert service._users._messages.appels_modification == [
+        {
+            "userId": "me",
+            "id": "message-1",
+            "body": {
+                "addLabelIds": ["label-repondu"],
+                "removeLabelIds": [
+                    "label-a-traiter",
+                    "label-attente",
+                    "label-transmis",
+                ],
+            },
+        }
+    ]
+
+
+def test_changer_libelle_cree_le_libelle_cible_absent():
+    service = FauxServiceGmail([], {}, {})
+
+    resultat = gmail.MessagerieGoogle(service).changer_libelle(
+        "message-1",
+        "a_traiter",
+    )
+
+    assert resultat == {"ok": True}
+    assert service._users._labels.appels_creation == [
+        {
+            "userId": "me",
+            "body": {"name": "SamaKer/A traiter"},
+        }
+    ]
+    assert service._users._messages.appels_modification[0]["body"] == {
+        "addLabelIds": ["label-cree-1"],
+        "removeLabelIds": [],
+    }
+
+
+def test_changer_libelle_arguments_invalides():
+    service = FauxServiceGmail([], {}, {})
+    messagerie = gmail.MessagerieGoogle(service)
+
+    for message_id, etat in (
+        ("", "repondu"),
+        ("  ", "repondu"),
+        (None, "repondu"),
+        ("message-1", "inconnu"),
+        ("message-1", None),
+    ):
+        resultat = messagerie.changer_libelle(message_id, etat)
+
+        assert resultat["ok"] is False
+        assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+    assert service._users._labels.appels_creation == []
+    assert service._users._messages.appels_modification == []
+
+
+def test_changer_libelle_message_introuvable():
+    service = FauxServiceGmail(
+        [{"id": "label-repondu", "name": "SamaKer/Repondu"}],
+        {},
+        {},
+    )
+    erreur_api = RuntimeError("Message absent")
+    erreur_api.resp = SimpleNamespace(status=404)
+    service._users._messages.resultat_modification = erreur_api
+
+    resultat = gmail.MessagerieGoogle(service).changer_libelle(
+        "message-inexistant",
+        "repondu",
     )
 
     assert resultat["ok"] is False
