@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 
 from googleapiclient.discovery import build
 
-from contracts import FUSEAU, LIBELLES, Erreur, erreur
+from contracts import FUSEAU, LIBELLES, EtatMessage, Erreur, erreur
 from integrations.google.auth import obtenir_identifiants
 
 
@@ -411,6 +411,84 @@ class MessagerieGoogle:
                 .send(
                     userId="me",
                     body={"id": brouillon_id.strip()},
+                )
+                .execute()
+            )
+
+            return {"ok": True}
+
+        except Exception as exc:
+            return _erreur_api(exc)
+
+    def changer_libelle(
+        self,
+        message_id: str,
+        etat: EtatMessage,
+    ) -> dict[str, Any] | Erreur:
+        """Remplace le libelle d'etat SamaKer d'un message."""
+        if (
+            not isinstance(message_id, str)
+            or not message_id.strip()
+            or not isinstance(etat, str)
+            or etat not in LIBELLES
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "L'identifiant du message ou son etat est invalide.",
+            )
+
+        try:
+            service_labels = self._service.users().labels()
+
+            reponse = (
+                service_labels
+                .list(userId="me")
+                .execute()
+            )
+
+            libelles_etat = {
+                element["name"]: element["id"]
+                for element in reponse.get("labels", [])
+                if element.get("name") in LIBELLES.values()
+                and element.get("id")
+            }
+
+            nom_cible = LIBELLES[etat]
+            identifiant_cible = libelles_etat.get(nom_cible)
+
+            if not identifiant_cible:
+                nouveau_libelle = (
+                    service_labels
+                    .create(
+                        userId="me",
+                        body={"name": nom_cible},
+                    )
+                    .execute()
+                )
+                identifiant_cible = nouveau_libelle.get("id")
+
+                if not identifiant_cible:
+                    return erreur(
+                        "INTERNE",
+                        "Impossible de recuperer le nouvel identifiant de libelle.",
+                    )
+
+            identifiants_a_retirer = [
+                identifiant
+                for nom, identifiant in libelles_etat.items()
+                if nom != nom_cible
+            ]
+
+            (
+                self._service.users()
+                .messages()
+                .modify(
+                    userId="me",
+                    id=message_id.strip(),
+                    body={
+                        "addLabelIds": [identifiant_cible],
+                        "removeLabelIds": identifiants_a_retirer,
+                    },
                 )
                 .execute()
             )
