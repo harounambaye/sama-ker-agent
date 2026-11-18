@@ -13,6 +13,7 @@ from googleapiclient.errors import HttpError
 from contracts import (
     Creneau,
     ResultatCreneaux,
+    ResultatVisite,
     Conseiller,
     DUREE_VISITE_MIN,
     Erreur,
@@ -21,6 +22,7 @@ from contracts import (
     HEURE_OUVERTURE,
     JOURS_OUVRES,
     erreur,
+    id_evenement,
 )
 from integrations.google.auth import obtenir_identifiants
 
@@ -112,6 +114,200 @@ class AgendaGoogle:
 
         return cls(service, calendriers)
 
+    def creer_visite(
+        self,
+        conseiller: Conseiller,
+        debut: str,
+        bien_id: str,
+        adresse: str,
+        client_nom: str,
+        client_email: str,
+        fil_id: str,
+    ) -> ResultatVisite | Erreur:
+        """Crée une visite après vérification de disponibilité."""
+        if conseiller not in self._calendriers:
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "Le conseiller demandé est inconnu.",
+            )
+
+        informations = (
+            bien_id,
+            adresse,
+            client_nom,
+            client_email,
+            fil_id,
+        )
+
+        if not all(
+            isinstance(valeur, str) and valeur.strip()
+            for valeur in informations
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "Les informations du bien, du client et du fil sont obligatoires.",
+            )
+
+        debut_local = _parser_date(debut)
+
+        if debut_local is None:
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "La date de visite doit être au format ISO 8601 avec fuseau.",
+            )
+
+        if (
+            debut_local.minute % PAS_CRENEAU_MIN != 0
+            or debut_local.second != 0
+            or debut_local.microsecond != 0
+        ):
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "Le début de visite doit respecter un intervalle de 15 minutes.",
+            )
+
+        debut_iso = debut_local.isoformat()
+        fin_local = debut_local + timedelta(minutes=DUREE_VISITE_MIN)
+        evenement_id = id_evenement(fil_id, debut_iso)
+
+        try:
+            evenement = (
+                self._service.events()
+                .get(
+                    calendarId=self._calendriers[conseiller],
+                    eventId=evenement_id,
+                )
+                .execute()
+            )
+
+            if evenement:
+                return {
+                    "ok": True,
+                    "evenement_id": evenement_id,
+                    "deja_existante": True,
+                }
+
+        except HttpError as exc:
+            statut = getattr(exc.resp, "status", None)
+
+            if statut in (401, 403):
+                return erreur(
+                    "AUTORISATION",
+                    "Google a refusé l'accès à l'agenda.",
+                )
+
+            if statut != 404:
+                return erreur(
+                    "INDISPONIBLE",
+                    f"Impossible de vérifier l'événement Google (HTTP {statut}).",
+                )
+
+        except Exception as exc:
+            return erreur(
+                "INDISPONIBLE",
+                f"Impossible de vérifier l'événement ({type(exc).__name__}).",
+            )
+
+        disponibilites = self.lister_creneaux_libres(
+            conseiller,
+            debut_iso,
+            fin_local.isoformat(),
+        )
+
+        if not disponibilites.get("ok"):
+            return disponibilites
+
+        creneau_disponible = any(
+            creneau["debut"] == debut_iso
+            and creneau["conseiller"] == conseiller
+            for creneau in disponibilites["creneaux"]
+        )
+
+        if not creneau_disponible:
+            return erreur(
+                "CRENEAU_INDISPONIBLE",
+                "Ce créneau n'est plus disponible pour ce conseiller.",
+            )
+
+        evenement = {
+            "id": evenement_id,
+            "summary": f"Visite - {bien_id} - {client_nom}",
+            "description": (
+                f"Client : {client_nom}\n"
+                f"Email : {client_email}\n"
+                f"Bien : {bien_id}\n"
+                f"Conseiller : {conseiller}\n"
+                f"Fil Gmail : {fil_id}"
+            ),
+            "location": adresse,
+            "start": {
+                "dateTime": debut_iso,
+                "timeZone": FUSEAU,
+            },
+            "end": {
+                "dateTime": fin_local.isoformat(),
+                "timeZone": FUSEAU,
+            },
+        }
+
+        try:
+            self._service.events().insert(
+                calendarId=self._calendriers[conseiller],
+                body=evenement,
+            ).execute()
+
+        except HttpError as exc:
+            statut = getattr(exc.resp, "status", None)
+
+            if statut == 409:
+                try:
+                    evenement_existant = (
+                        self._service.events()
+                        .get(
+                            calendarId=self._calendriers[conseiller],
+                            eventId=evenement_id,
+                        )
+                        .execute()
+                    )
+                except Exception:
+                    return erreur(
+                        "INDISPONIBLE",
+                        "Le conflit Google est survenu, mais l'événement n'a pas pu être vérifié.",
+                    )
+
+                if evenement_existant:
+                    return {
+                        "ok": True,
+                        "evenement_id": evenement_id,
+                        "deja_existante": True,
+                    }
+
+                return erreur(
+                    "INDISPONIBLE",
+                    "Google a signalé un conflit sans événement vérifiable.",
+                )
+            if statut in (401, 403):
+                return erreur(
+                    "AUTORISATION",
+                    "Google a refusé la création de la visite.",
+                )
+
+            return erreur(
+                "INDISPONIBLE",
+                f"Impossible de créer la visite Google (HTTP {statut}).",
+            )
+
+        except Exception as exc:
+            return erreur(
+                "INDISPONIBLE",
+                f"Échec de création de la visite ({type(exc).__name__}).",
+            )
+
+        return {
+            "ok": True,
+            "evenement_id": evenement_id,
+            "deja_existante": False,
+        }
     def lister_creneaux_libres(
         self,
         conseiller: Conseiller | None,

@@ -1,6 +1,9 @@
-﻿"""Tests hors ligne de l'intégration Google Calendar."""
+"""Tests hors ligne de l'intégration Google Calendar."""
 
 from types import SimpleNamespace
+
+import httplib2
+from googleapiclient.errors import HttpError
 
 from integrations.google import calendar
 
@@ -291,3 +294,224 @@ def test_lister_creneaux_gere_un_agenda_inaccessible():
 
     assert resultat["ok"] is False
     assert resultat["code"] == "AUTORISATION"
+
+
+class FauxRequeteEvenement:
+    def __init__(self, action):
+        self.action = action
+
+    def execute(self):
+        return self.action()
+
+
+class FauxEvenements:
+    def __init__(self, evenement=None, conflit_insert=False):
+        self.evenement = evenement
+        self.conflit_insert = conflit_insert
+        self.corps = None
+        self.nombre_get = 0
+        self.nombre_insert = 0
+
+    def get(self, calendarId, eventId):
+        self.nombre_get += 1
+
+        def executer():
+            if self.evenement is None:
+                raise HttpError(
+                    httplib2.Response(
+                        {"status": "404", "reason": "Not Found"}
+                    ),
+                    b"not found",
+                    uri="https://calendar.googleapis.com/",
+                )
+            return self.evenement
+
+        return FauxRequeteEvenement(executer)
+
+    def insert(self, calendarId, body):
+        self.nombre_insert += 1
+        self.corps = body
+
+        def executer():
+            self.evenement = body
+
+            if self.conflit_insert:
+                raise HttpError(
+                    httplib2.Response(
+                        {"status": "409", "reason": "Conflict"}
+                    ),
+                    b"conflict",
+                    uri="https://calendar.googleapis.com/",
+                )
+
+            return body
+
+        return FauxRequeteEvenement(executer)
+
+
+class FauxServiceCreation:
+    def __init__(self, evenement=None, conflit_insert=False):
+        self.ressource_evenements = FauxEvenements(
+            evenement,
+            conflit_insert,
+        )
+
+    def events(self):
+        return self.ressource_evenements
+
+
+def creer_agenda_creation(evenement=None, conflit_insert=False):
+    service = FauxServiceCreation(evenement, conflit_insert)
+
+    agenda = calendar.AgendaGoogle(
+        service,
+        {
+            "aminata": "agenda_aminata",
+            "moussa": "agenda_moussa",
+            "khady": "agenda_khady",
+        },
+    )
+
+    agenda.lister_creneaux_libres = (
+        lambda conseiller, debut, fin: {
+            "ok": True,
+            "creneaux": [
+                {
+                    "conseiller": conseiller,
+                    "debut": debut,
+                    "fin": fin,
+                }
+            ],
+        }
+    )
+
+    return agenda, service
+
+def test_creer_visite_avec_succes():
+    agenda, service = creer_agenda_creation()
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, Sénégal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    evenement_id = calendar.id_evenement(
+        "fil-123",
+        "2026-11-18T09:00:00+00:00",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "evenement_id": evenement_id,
+        "deja_existante": False,
+    }
+    assert service.ressource_evenements.nombre_get == 1
+    assert service.ressource_evenements.nombre_insert == 1
+    assert service.ressource_evenements.corps["location"] == "Dakar, Sénégal"
+    assert service.ressource_evenements.corps["start"]["dateTime"] == (
+        "2026-11-18T09:00:00+00:00"
+    )
+    assert service.ressource_evenements.corps["end"]["dateTime"] == (
+        "2026-11-18T09:45:00+00:00"
+    )
+
+
+def test_creer_visite_ne_duplique_pas_un_evenement_existant():
+    evenement_id = calendar.id_evenement(
+        "fil-123",
+        "2026-11-18T09:00:00+00:00",
+    )
+    agenda, service = creer_agenda_creation({"id": evenement_id})
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, Sénégal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "evenement_id": evenement_id,
+        "deja_existante": True,
+    }
+    assert service.ressource_evenements.nombre_get == 1
+    assert service.ressource_evenements.nombre_insert == 0
+
+
+def test_creer_visite_refuse_un_creneau_indisponible():
+    agenda, service = creer_agenda_creation()
+
+    agenda.lister_creneaux_libres = (
+        lambda conseiller, debut, fin: {
+            "ok": True,
+            "creneaux": [],
+        }
+    )
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, Sénégal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "CRENEAU_INDISPONIBLE"
+    assert service.ressource_evenements.nombre_insert == 0
+
+
+def test_creer_visite_refuse_des_arguments_invalides():
+    agenda, service = creer_agenda_creation()
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "date-invalide",
+        "bien-123",
+        "Dakar, Sénégal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+    assert service.ressource_evenements.nombre_get == 0
+    assert service.ressource_evenements.nombre_insert == 0
+
+def test_creer_visite_confirme_un_doublon_apres_un_conflit_google():
+    agenda, service = creer_agenda_creation(conflit_insert=True)
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, Sénégal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    evenement_id = calendar.id_evenement(
+        "fil-123",
+        "2026-11-18T09:00:00+00:00",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "evenement_id": evenement_id,
+        "deja_existante": True,
+    }
+    assert service.ressource_evenements.nombre_get == 2
+    assert service.ressource_evenements.nombre_insert == 1
