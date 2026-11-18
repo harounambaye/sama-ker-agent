@@ -734,3 +734,99 @@ class AgendaGoogle:
                 "INDISPONIBLE",
                 "Une erreur empêche le déplacement de la visite.",
             )
+
+    def annuler_visite(
+        self,
+        evenement_id: str,
+    ) -> Confirmation | Erreur:
+        """Annule une visite dans son agenda Google."""
+        if not isinstance(evenement_id, str) or not evenement_id.strip():
+            return erreur(
+                "ARGUMENT_INVALIDE",
+                "L'identifiant de la visite est invalide.",
+            )
+
+        evenement_id = evenement_id.strip()
+
+        try:
+            evenements = self._service.events()
+        except Exception:
+            return erreur(
+                "INDISPONIBLE",
+                "Impossible de consulter Google Calendar.",
+            )
+
+        calendrier_trouve = None
+
+        for calendrier_id in self._calendriers.values():
+            try:
+                evenements.get(
+                    calendarId=calendrier_id,
+                    eventId=evenement_id,
+                ).execute()
+
+                calendrier_trouve = calendrier_id
+                break
+
+            except HttpError as exc:
+                statut = exc.resp.status
+
+                if statut == 404:
+                    continue
+
+                if statut in (401, 403):
+                    return erreur(
+                        "AUTORISATION",
+                        "Accès refusé à Google Calendar.",
+                    )
+
+                return erreur(
+                    "INDISPONIBLE",
+                    "Impossible de retrouver la visite dans Google Calendar.",
+                )
+
+            except Exception:
+                return erreur(
+                    "INDISPONIBLE",
+                    "Impossible de consulter Google Calendar.",
+                )
+
+        if calendrier_trouve is None:
+            return erreur(
+                "INTROUVABLE",
+                "La visite demandée est introuvable.",
+            )
+
+        try:
+            evenements.delete(
+                calendarId=calendrier_trouve,
+                eventId=evenement_id,
+            ).execute()
+
+            return {"ok": True}
+
+        except HttpError as exc:
+            statut = exc.resp.status
+
+            if statut in (401, 403):
+                return erreur(
+                    "AUTORISATION",
+                    "Accès refusé lors de l'annulation de la visite.",
+                )
+
+            if statut == 404:
+                return erreur(
+                    "INTROUVABLE",
+                    "La visite ou l'agenda n'existe plus.",
+                )
+
+            return erreur(
+                "INDISPONIBLE",
+                "Google Calendar n'a pas pu annuler la visite.",
+            )
+
+        except Exception:
+            return erreur(
+                "INDISPONIBLE",
+                "Une erreur empêche l'annulation de la visite.",
+            )
