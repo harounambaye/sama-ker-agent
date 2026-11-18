@@ -696,3 +696,102 @@ def test_deplacer_visite_retrouve_le_bon_agenda():
 
     assert resultat == {"ok": True}
     assert service.ressource_evenements.calendrier_modifie == "agenda_khady"
+
+# tests de l'annulation de visite
+
+class FauxEvenementsAnnulation:
+    def __init__(self, agendas):
+        self.agendas = agendas
+        self.calendrier_supprime = None
+        self.nombre_delete = 0
+
+    def get(self, calendarId, eventId):
+        def executer():
+            evenement = self.agendas.get(calendarId, {}).get(eventId)
+
+            if evenement is None:
+                raise HttpError(
+                    httplib2.Response({"status": "404", "reason": "Not Found"}),
+                    b"not found",
+                    uri="https://calendar.googleapis.com/",
+                )
+
+            return evenement
+
+        return FauxRequeteEvenement(executer)
+
+    def delete(self, calendarId, eventId):
+        def executer():
+            self.nombre_delete += 1
+            self.calendrier_supprime = calendarId
+            self.agendas[calendarId].pop(eventId)
+            return {}
+
+        return FauxRequeteEvenement(executer)
+
+
+class FauxServiceAnnulation:
+    def __init__(self, agendas):
+        self.ressource_evenements = FauxEvenementsAnnulation(agendas)
+
+    def events(self):
+        return self.ressource_evenements
+
+
+def creer_agenda_annulation(evenement=None, calendrier="agenda_moussa"):
+    agendas = {
+        "agenda_aminata": {},
+        "agenda_moussa": {},
+        "agenda_khady": {},
+    }
+
+    if evenement is not None:
+        agendas[calendrier][evenement["id"]] = evenement
+
+    service = FauxServiceAnnulation(agendas)
+
+    agenda = calendar.AgendaGoogle(
+        service,
+        {
+            "aminata": "agenda_aminata",
+            "moussa": "agenda_moussa",
+            "khady": "agenda_khady",
+        },
+    )
+
+    return agenda, service
+
+
+def test_annuler_visite_avec_succes():
+    evenement = creer_evenement_test()
+    agenda, service = creer_agenda_annulation(evenement)
+
+    resultat = agenda.annuler_visite("evenement-test")
+
+    assert resultat == {"ok": True}
+    assert service.ressource_evenements.nombre_delete == 1
+    assert service.ressource_evenements.calendrier_supprime == "agenda_moussa"
+    assert "evenement-test" not in service.ressource_evenements.agendas["agenda_moussa"]
+
+
+def test_annuler_visite_refuse_un_evenement_introuvable():
+    agenda, service = creer_agenda_annulation()
+
+    resultat = agenda.annuler_visite("evenement-inconnu")
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+    assert service.ressource_evenements.nombre_delete == 0
+
+
+def test_annuler_visite_retrouve_le_bon_agenda():
+    evenement = creer_evenement_test()
+    agenda, service = creer_agenda_annulation(
+        evenement,
+        calendrier="agenda_khady",
+    )
+
+    resultat = agenda.annuler_visite("evenement-test")
+
+    assert resultat == {"ok": True}
+    assert service.ressource_evenements.calendrier_supprime == "agenda_khady"
