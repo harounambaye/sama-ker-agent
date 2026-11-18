@@ -1,4 +1,4 @@
-﻿"""Tests hors ligne de l'initialisation Google Calendar."""
+﻿"""Tests hors ligne de l'intégration Google Calendar."""
 
 from types import SimpleNamespace
 
@@ -9,6 +9,37 @@ def configurer_calendriers(monkeypatch):
     monkeypatch.setenv("CALENDAR_ID_AMINATA", "agenda_aminata")
     monkeypatch.setenv("CALENDAR_ID_MOUSSA", "agenda_moussa")
     monkeypatch.setenv("CALENDAR_ID_KHADY", "agenda_khady")
+
+
+class FauxService:
+    def __init__(self, reponse):
+        self.reponse = reponse
+        self.corps = None
+        self.nombre_reessais = None
+
+    def freebusy(self):
+        return self
+
+    def query(self, body):
+        self.corps = body
+        return self
+
+    def execute(self, num_retries=0):
+        self.nombre_reessais = num_retries
+        return self.reponse
+
+
+def creer_agenda(reponse):
+    service = FauxService(reponse)
+    agenda = calendar.AgendaGoogle(
+        service,
+        {
+            "aminata": "agenda_aminata",
+            "moussa": "agenda_moussa",
+            "khady": "agenda_khady",
+        },
+    )
+    return agenda, service
 
 
 def test_configuration_calendriers(monkeypatch):
@@ -123,3 +154,140 @@ def test_erreur_initialisation_service(monkeypatch):
     assert resultat["ok"] is False
     assert resultat["code"] == "INDISPONIBLE"
     assert "ConnectionError" in resultat["message"]
+
+
+def test_lister_creneaux_exclut_les_periodes_occupees():
+    agenda, service = creer_agenda(
+        {
+            "calendars": {
+                "agenda_aminata": {
+                    "busy": [
+                        {
+                            "start": "2026-11-18T09:00:00Z",
+                            "end": "2026-11-18T10:00:00Z",
+                        }
+                    ]
+                }
+            }
+        }
+    )
+
+    resultat = agenda.lister_creneaux_libres(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "2026-11-18T11:00:00+00:00",
+    )
+
+    assert resultat["ok"] is True
+    assert len(resultat["creneaux"]) == 2
+    assert resultat["creneaux"][0]["debut"] == "2026-11-18T10:00:00+00:00"
+    assert resultat["creneaux"][0]["fin"] == "2026-11-18T10:45:00+00:00"
+    assert resultat["creneaux"][1]["debut"] == "2026-11-18T10:15:00+00:00"
+    assert service.nombre_reessais == 2
+    assert service.corps["timeZone"] == "Africa/Dakar"
+    assert service.corps["items"] == [{"id": "agenda_aminata"}]
+
+
+def test_lister_creneaux_de_tous_les_conseillers():
+    agenda, _ = creer_agenda(
+        {
+            "calendars": {
+                "agenda_aminata": {"busy": []},
+                "agenda_moussa": {
+                    "busy": [
+                        {
+                            "start": "2026-11-18T09:00:00Z",
+                            "end": "2026-11-18T09:45:00Z",
+                        }
+                    ]
+                },
+                "agenda_khady": {"busy": []},
+            }
+        }
+    )
+
+    resultat = agenda.lister_creneaux_libres(
+        None,
+        "2026-11-18T09:00:00+00:00",
+        "2026-11-18T09:45:00+00:00",
+    )
+
+    assert resultat["ok"] is True
+    assert [c["conseiller"] for c in resultat["creneaux"]] == [
+        "aminata",
+        "khady",
+    ]
+
+
+def test_lister_creneaux_refuse_les_dates_sans_fuseau():
+    agenda, _ = creer_agenda({"calendars": {}})
+
+    resultat = agenda.lister_creneaux_libres(
+        "aminata",
+        "2026-11-18T09:00:00",
+        "2026-11-18T10:00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+
+def test_lister_creneaux_refuse_un_intervalle_invalide():
+    agenda, _ = creer_agenda({"calendars": {}})
+
+    resultat = agenda.lister_creneaux_libres(
+        "aminata",
+        "2026-11-18T11:00:00+00:00",
+        "2026-11-18T09:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+
+def test_lister_creneaux_refuse_un_conseiller_inconnu():
+    agenda, _ = creer_agenda({"calendars": {}})
+
+    resultat = agenda.lister_creneaux_libres(
+        "inconnu",
+        "2026-11-18T09:00:00+00:00",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "ARGUMENT_INVALIDE"
+
+
+def test_lister_creneaux_exclut_le_dimanche():
+    agenda, _ = creer_agenda(
+        {"calendars": {"agenda_aminata": {"busy": []}}}
+    )
+
+    resultat = agenda.lister_creneaux_libres(
+        "aminata",
+        "2026-11-22T09:00:00+00:00",
+        "2026-11-22T12:00:00+00:00",
+    )
+
+    assert resultat == {"ok": True, "creneaux": []}
+
+
+def test_lister_creneaux_gere_un_agenda_inaccessible():
+    agenda, _ = creer_agenda(
+        {
+            "calendars": {
+                "agenda_aminata": {
+                    "errors": [{"reason": "forbidden"}]
+                }
+            }
+        }
+    )
+
+    resultat = agenda.lister_creneaux_libres(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "AUTORISATION"
