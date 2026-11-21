@@ -327,7 +327,21 @@ class MessagerieGoogle:
                     "Aucun message trouve dans ce fil Gmail.",
                 )
 
-            dernier_message = messages[-1]
+            messages_admissibles = [
+                message
+                for message in messages
+                if not {"DRAFT", "SENT"}.intersection(
+                    message.get("labelIds", [])
+                )
+            ]
+
+            if not messages_admissibles:
+                return erreur(
+                    "INTROUVABLE",
+                    "Aucun message recu trouve dans ce fil Gmail.",
+                )
+
+            dernier_message = messages_admissibles[-1]
             entetes = {
                 entete["name"].lower(): entete["value"]
                 for entete in dernier_message.get(
