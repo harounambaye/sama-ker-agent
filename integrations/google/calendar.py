@@ -172,6 +172,7 @@ class AgendaGoogle:
         debut_iso = debut_local.isoformat()
         fin_local = debut_local + timedelta(minutes=DUREE_VISITE_MIN)
         evenement_id = id_evenement(fil_id, debut_iso)
+        evenement_a_reactiver = None
 
         try:
             evenement = (
@@ -184,11 +185,14 @@ class AgendaGoogle:
             )
 
             if evenement:
-                return {
-                    "ok": True,
-                    "evenement_id": evenement_id,
-                    "deja_existante": True,
-                }
+                if evenement.get("status") == "cancelled":
+                    evenement_a_reactiver = evenement
+                else:
+                    return {
+                        "ok": True,
+                        "evenement_id": evenement_id,
+                        "deja_existante": True,
+                    }
 
         except HttpError as exc:
             statut = getattr(exc.resp, "status", None)
@@ -253,6 +257,52 @@ class AgendaGoogle:
             },
         }
 
+        def reactiver_evenement(evenement_existant):
+            corps = {
+                **evenement_existant,
+                **evenement,
+                "status": "confirmed",
+            }
+
+            try:
+                self._service.events().update(
+                    calendarId=self._calendriers[conseiller],
+                    eventId=evenement_id,
+                    body=corps,
+                ).execute()
+            except HttpError as exc:
+                statut = getattr(exc.resp, "status", None)
+
+                if statut in (401, 403):
+                    return erreur(
+                        "AUTORISATION",
+                        "Google a refus? la r?activation de la visite.",
+                    )
+
+                return erreur(
+                    "INDISPONIBLE",
+                    f"Impossible de r?activer la visite Google (HTTP {statut}).",
+                )
+            except Exception as exc:
+                return erreur(
+                    "INDISPONIBLE",
+                    f"?chec de r?activation ({type(exc).__name__}).",
+                )
+
+            return None
+
+        if evenement_a_reactiver is not None:
+            resultat_erreur = reactiver_evenement(evenement_a_reactiver)
+
+            if resultat_erreur is not None:
+                return resultat_erreur
+
+            return {
+                "ok": True,
+                "evenement_id": evenement_id,
+                "deja_existante": False,
+            }
+
         try:
             self._service.events().insert(
                 calendarId=self._calendriers[conseiller],
@@ -279,6 +329,20 @@ class AgendaGoogle:
                     )
 
                 if evenement_existant:
+                    if evenement_existant.get("status") == "cancelled":
+                        resultat_erreur = reactiver_evenement(
+                            evenement_existant
+                        )
+
+                        if resultat_erreur is not None:
+                            return resultat_erreur
+
+                        return {
+                            "ok": True,
+                            "evenement_id": evenement_id,
+                            "deja_existante": False,
+                        }
+
                     return {
                         "ok": True,
                         "evenement_id": evenement_id,
@@ -603,6 +667,12 @@ class AgendaGoogle:
                 "La visite demandée est introuvable.",
             )
 
+        if evenement.get("status") == "cancelled":
+            return erreur(
+                "INTROUVABLE",
+                "La visite demand?e est introuvable.",
+            )
+
         def parser_horaire(valeur: dict) -> datetime | None:
             """Convertit un horaire Google en date locale."""
             date_heure = valeur.get("dateTime")
@@ -759,10 +829,11 @@ class AgendaGoogle:
             )
 
         calendrier_trouve = None
+        evenement_trouve = None
 
         for calendrier_id in self._calendriers.values():
             try:
-                evenements.get(
+                evenement_trouve = evenements.get(
                     calendarId=calendrier_id,
                     eventId=evenement_id,
                 ).execute()
@@ -797,6 +868,12 @@ class AgendaGoogle:
             return erreur(
                 "INTROUVABLE",
                 "La visite demandée est introuvable.",
+            )
+
+        if evenement_trouve.get("status") == "cancelled":
+            return erreur(
+                "INTROUVABLE",
+                "La visite demand?e est introuvable.",
             )
 
         try:
