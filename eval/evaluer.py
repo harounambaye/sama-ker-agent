@@ -1,7 +1,8 @@
 """Évaluation de l'agent Sama Kër Immobilier sur le jeu de 15 emails (exercice 6).
 
 Lancement, depuis la racine du dépôt :
-    python -m eval.evaluer --etiquette avant              # vrai agent (clé API nécessaire)
+    python -m eval.evaluer --etiquette avant              # pipeline final (clé API nécessaire)
+    python -m eval.evaluer --etiquette ex1 --agent exercice1  # boucle de l'exercice 1
     python -m eval.evaluer --etiquette essai --simulation # sans API : teste le script lui-même
     python -m eval.evaluer --etiquette avant --limite 3   # seulement les 3 premiers emails
 
@@ -74,6 +75,68 @@ def adaptateur_agent():
     return traiter
 
 
+def adaptateur_pipeline():
+    """Pipeline final (exercice 5) : chaque email est reçu dans une messagerie factice,
+    traité jusqu'à la pause de validation, puis laissé en attente. Rien n'est envoyé.
+
+    Décisions renvoyées :
+      "brouillon"   un brouillon de réponse attend la validation d'un conseiller
+                    (couvre repondre, demander_precision et creer_visite) ;
+      "transmettre" l'email est transmis à un conseiller, sans brouillon ;
+      "reporte"     une brique était indisponible, rien n'a été écrit.
+    """
+    import tempfile
+
+    from agent import config
+    from agent.briques import sondes
+    from agent.conversation import construire_graphe_conversation, demarrer
+    from agent.etat import VerificateurEtat
+    from agent.factices import AgendaFactice, MessagerieFactice
+    from agent.memoire import ouvrir_checkpointer
+    from agent.outils import OutilsCatalogueLocal
+    from agent.traces import Trace
+
+    try:
+        from mcp_server.catalogue import CatalogueSQLite as Catalogue
+    except ImportError:
+        from agent.catalogue_factice import CatalogueFactice as Catalogue
+
+    cfg = config.charger()
+    catalogue = Catalogue()
+    messagerie = MessagerieFactice()  # en mémoire : aucun vrai email
+    agenda = AgendaFactice()
+    verificateur = VerificateurEtat(sondes(cfg, catalogue, agenda, messagerie))
+    dossier = Path(tempfile.mkdtemp(prefix="eval-"))
+    checkpointer = ouvrir_checkpointer(dossier / "checkpoints.sqlite")
+
+    def traiter(email: dict) -> dict:
+        trace = Trace(cfg.traces_dir, etiquette=f"eval-{email['id']}", verbeux=False)
+        graphe = construire_graphe_conversation(
+            cfg, OutilsCatalogueLocal(catalogue), agenda, messagerie, verificateur,
+            trace, checkpointer,
+        )
+        demande = messagerie.recevoir(email["expediteur"], email["objet"], email["corps"])
+        situation = demarrer(graphe, cfg, demande)
+        etat = situation["etat"]
+        if situation["en_attente"]:
+            decision = "brouillon"
+            reponse = situation["en_attente"]["proposition"].get("texte", "")
+        elif situation["issue"] == "transmis":
+            decision, reponse = "transmettre", ""
+        else:
+            decision, reponse = "reporte", ""
+        return {
+            "decision": decision,
+            "reponse": reponse,
+            "creneaux": None,  # le pipeline ne renvoie pas de liste de créneaux
+            "appels_outils": etat.get("appels_outils", 0),
+            "tokens_entree": etat.get("tokens_entree", 0),
+            "tokens_sortie": etat.get("tokens_sortie", 0),
+        }
+
+    return traiter
+
+
 def adaptateur_simulation():
     """Faux agent qui renvoie exactement le résultat attendu, sans appeler l'API.
     Sert uniquement à vérifier que le script fonctionne : il doit obtenir 100 %."""
@@ -116,8 +179,16 @@ def verifier(attendu: dict, resultat: dict) -> list[str]:
     reponse = resultat["reponse"]
     cites = set(REFERENCE_BIEN.findall(reponse))
 
-    if resultat["decision"] is not None and resultat["decision"] != attendu["decision"]:
-        problemes.append(f"décision {resultat['decision']} au lieu de {attendu['decision']}")
+    decision = resultat["decision"]
+    if decision == "brouillon":
+        # Le pipeline ne distingue pas « répondre » de « demander une précision » :
+        # un brouillon est correct dès qu'une réponse rédigée était attendue.
+        if attendu["decision"] == "transmettre":
+            problemes.append("brouillon rédigé au lieu de transmettre à un conseiller")
+    elif decision == "reporte":
+        problemes.append("traitement reporté : une brique était indisponible")
+    elif decision is not None and decision != attendu["decision"]:
+        problemes.append(f"décision {decision} au lieu de {attendu['decision']}")
 
     if manquants := set(attendu["biens_attendus"]) - cites:
         problemes.append(f"biens attendus absents : {sorted(manquants)}")
@@ -221,6 +292,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Évalue l'agent sur le jeu de 15 emails.")
     parser.add_argument("--etiquette", required=True, help="nom de l'évaluation, ex. avant ou apres")
     parser.add_argument("--simulation", action="store_true", help="faux agent, sans appel à l'API")
+    parser.add_argument("--agent", choices=["pipeline", "exercice1"], default="pipeline",
+                        help="pipeline final (par défaut) ou boucle de l'exercice 1")
     parser.add_argument("--limite", type=int, help="n'évaluer que les N premiers emails")
     args = parser.parse_args()
 
@@ -228,7 +301,12 @@ def main() -> None:
     if args.limite:
         emails = emails[: args.limite]
 
-    traiter = adaptateur_simulation() if args.simulation else adaptateur_agent()
+    if args.simulation:
+        traiter = adaptateur_simulation()
+    elif args.agent == "exercice1":
+        traiter = adaptateur_agent()
+    else:
+        traiter = adaptateur_pipeline()
     lignes = evaluer(traiter, emails)
     bilan = resume(lignes)
 
