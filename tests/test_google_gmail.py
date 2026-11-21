@@ -500,6 +500,67 @@ def test_creer_brouillon_dans_fil_existant():
     )
 
 
+def test_creer_brouillon_ignore_le_brouillon_de_l_agence():
+    message_client = creer_message(
+        "message-client",
+        "fil-1",
+        "Bonjour, je souhaite visiter le logement.",
+        1795000000000,
+    )
+    message_client["labelIds"] = ["INBOX"]
+    message_client["payload"]["headers"].append(
+        {"name": "Message-ID", "value": "<client@example.com>"}
+    )
+
+    brouillon_agence = creer_message(
+        "brouillon-agence",
+        "fil-1",
+        "Reponse en cours de redaction",
+        1795000001000,
+    )
+    brouillon_agence["labelIds"] = ["DRAFT"]
+    brouillon_agence["payload"]["headers"][0]["value"] = (
+        "Agence <agence.test@example.com>"
+    )
+
+    service = FauxServiceGmail(
+        libelles=[],
+        pages={},
+        messages={},
+        fils={
+            "fil-1": {
+                "messages": [message_client, brouillon_agence],
+            }
+        },
+    )
+
+    messagerie = gmail.MessagerieGoogle(service)
+
+    resultat = messagerie.creer_brouillon(
+        "fil-1",
+        "Bonjour, votre demande a bien ete recue.",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "brouillon_id": "brouillon-1",
+    }
+
+    corps = service._users._drafts.corps["body"]
+    assert corps["message"]["threadId"] == "fil-1"
+
+    donnees = corps["message"]["raw"]
+    donnees += "=" * (-len(donnees) % 4)
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        base64.urlsafe_b64decode(donnees)
+    )
+
+    assert message["To"] == "Client <client@example.com>"
+    assert message["In-Reply-To"] == "<client@example.com>"
+    assert "agence.test@example.com" not in message["To"]
+
+
 def test_creer_brouillon_conserve_sujet_re_existant():
     dernier = creer_message(
         "message-1",
