@@ -305,12 +305,20 @@ class FauxRequeteEvenement:
 
 
 class FauxEvenements:
-    def __init__(self, evenement=None, conflit_insert=False):
+    def __init__(
+        self,
+        evenement=None,
+        conflit_insert=False,
+        evenement_apres_conflit=None,
+    ):
         self.evenement = evenement
         self.conflit_insert = conflit_insert
+        self.evenement_apres_conflit = evenement_apres_conflit
         self.corps = None
+        self.corps_update = None
         self.nombre_get = 0
         self.nombre_insert = 0
+        self.nombre_update = 0
 
     def get(self, calendarId, eventId):
         self.nombre_get += 1
@@ -336,6 +344,9 @@ class FauxEvenements:
             self.evenement = body
 
             if self.conflit_insert:
+                if self.evenement_apres_conflit is not None:
+                    self.evenement = self.evenement_apres_conflit
+
                 raise HttpError(
                     httplib2.Response(
                         {"status": "409", "reason": "Conflict"}
@@ -348,20 +359,44 @@ class FauxEvenements:
 
         return FauxRequeteEvenement(executer)
 
+    def update(self, calendarId, eventId, body):
+        self.nombre_update += 1
+        self.corps_update = body
+
+        def executer():
+            self.evenement = body
+            return body
+
+        return FauxRequeteEvenement(executer)
+
 
 class FauxServiceCreation:
-    def __init__(self, evenement=None, conflit_insert=False):
+    def __init__(
+        self,
+        evenement=None,
+        conflit_insert=False,
+        evenement_apres_conflit=None,
+    ):
         self.ressource_evenements = FauxEvenements(
             evenement,
             conflit_insert,
+            evenement_apres_conflit,
         )
 
     def events(self):
         return self.ressource_evenements
 
 
-def creer_agenda_creation(evenement=None, conflit_insert=False):
-    service = FauxServiceCreation(evenement, conflit_insert)
+def creer_agenda_creation(
+    evenement=None,
+    conflit_insert=False,
+    evenement_apres_conflit=None,
+):
+    service = FauxServiceCreation(
+        evenement,
+        conflit_insert,
+        evenement_apres_conflit,
+    )
 
     agenda = calendar.AgendaGoogle(
         service,
@@ -445,6 +480,83 @@ def test_creer_visite_ne_duplique_pas_un_evenement_existant():
     }
     assert service.ressource_evenements.nombre_get == 1
     assert service.ressource_evenements.nombre_insert == 0
+
+
+def test_creer_visite_reactive_un_evenement_annule():
+    evenement_id = calendar.id_evenement(
+        "fil-123",
+        "2026-11-18T09:00:00+00:00",
+    )
+    evenement_annule = {
+        "id": evenement_id,
+        "status": "cancelled",
+        "summary": "Ancienne visite",
+    }
+
+    agenda, service = creer_agenda_creation(evenement_annule)
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, S?n?gal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "evenement_id": evenement_id,
+        "deja_existante": False,
+    }
+    assert service.ressource_evenements.nombre_get == 1
+    assert service.ressource_evenements.nombre_insert == 0
+    assert service.ressource_evenements.nombre_update == 1
+    assert service.ressource_evenements.corps_update["status"] == "confirmed"
+    assert service.ressource_evenements.corps_update["start"]["dateTime"] == (
+        "2026-11-18T09:00:00+00:00"
+    )
+    assert service.ressource_evenements.corps_update["end"]["dateTime"] == (
+        "2026-11-18T09:45:00+00:00"
+    )
+
+
+def test_creer_visite_reactive_un_evenement_annule_apres_conflit_google():
+    evenement_id = calendar.id_evenement(
+        "fil-123",
+        "2026-11-18T09:00:00+00:00",
+    )
+    evenement_annule = {
+        "id": evenement_id,
+        "status": "cancelled",
+        "summary": "Ancienne visite",
+    }
+
+    agenda, service = creer_agenda_creation(
+        conflit_insert=True,
+        evenement_apres_conflit=evenement_annule,
+    )
+
+    resultat = agenda.creer_visite(
+        "aminata",
+        "2026-11-18T09:00:00+00:00",
+        "bien-123",
+        "Dakar, S?n?gal",
+        "Awa Ndiaye",
+        "awa@example.com",
+        "fil-123",
+    )
+
+    assert resultat == {
+        "ok": True,
+        "evenement_id": evenement_id,
+        "deja_existante": False,
+    }
+    assert service.ressource_evenements.nombre_get == 2
+    assert service.ressource_evenements.nombre_insert == 1
+    assert service.ressource_evenements.nombre_update == 1
+    assert service.ressource_evenements.corps_update["status"] == "confirmed"
 
 
 def test_creer_visite_refuse_un_creneau_indisponible():
@@ -668,6 +780,22 @@ def test_deplacer_visite_refuse_un_evenement_introuvable():
     assert service.ressource_evenements.nombre_patch == 0
 
 
+def test_deplacer_visite_refuse_un_evenement_annule():
+    evenement = creer_evenement_test()
+    evenement["status"] = "cancelled"
+
+    agenda, service = creer_agenda_deplacement(evenement)
+
+    resultat = agenda.deplacer_visite(
+        "evenement-test",
+        "2026-11-18T10:00:00+00:00",
+    )
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+    assert service.ressource_evenements.nombre_patch == 0
+
+
 def test_deplacer_visite_refuse_une_date_invalide():
     evenement = creer_evenement_test()
     agenda, service = creer_agenda_deplacement(evenement)
@@ -778,6 +906,19 @@ def test_annuler_visite_refuse_un_evenement_introuvable():
     agenda, service = creer_agenda_annulation()
 
     resultat = agenda.annuler_visite("evenement-inconnu")
+
+    assert resultat["ok"] is False
+    assert resultat["code"] == "INTROUVABLE"
+    assert service.ressource_evenements.nombre_delete == 0
+
+
+def test_annuler_visite_refuse_une_deuxieme_annulation():
+    evenement = creer_evenement_test()
+    evenement["status"] = "cancelled"
+
+    agenda, service = creer_agenda_annulation(evenement)
+
+    resultat = agenda.annuler_visite("evenement-test")
 
     assert resultat["ok"] is False
     assert resultat["code"] == "INTROUVABLE"
