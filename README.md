@@ -140,6 +140,24 @@ python -m agent.conseiller demande "Le deuxième créneau me convient" --de "Awa
 python -m agent.conseiller valider --conseiller Khady  # visite, puis confirmation
 ```
 
+### Démonstration sur le vrai compte Google
+
+1. Fournis par l'équipe : `secrets/credentials.json` (client OAuth « application de bureau »,
+   API Gmail et Calendar activées, votre adresse parmi les utilisateurs test) et l'accès au
+   compte de test de l'agence. Rien de `secrets/` n'est versionné.
+2. Dans le compte de l'agence : trois agendas (Aminata, Moussa, Khady) et un filtre Gmail
+   « À : adresse de l'agence » -> libellé `SamaKer/A traiter`.
+3. Dans `.env` : `BRIQUES=google`, `AGENCE_EMAIL`, `CALENDAR_ID_AMINATA`, `CALENDAR_ID_MOUSSA`,
+   `CALENDAR_ID_KHADY`.
+4. Vérification (crée les libellés manquants, n'envoie rien) :
+
+```bash
+python -m agent.preparer_google     # la première fois : connexion avec le compte de l'agence
+```
+
+Ensuite : écrire à l'agence depuis une autre adresse, `releve`, `valider` ; la réponse
+arrive dans le même fil, la visite dans l'agenda du conseiller.
+
 Pour l'évaluation, `agent.pipeline.resultat_evaluation()` renvoie la décision
 (`repondre`, `demander_precision`, `transmettre`, `creer_visite`), le brouillon,
 les créneaux proposés, les appels d'outils et les tokens.
@@ -150,5 +168,4 @@ les créneaux proposés, les appels d'outils et les tokens.
 python -m pytest          # hors ligne : ni réseau, ni clé, ni .env
 ```
 
-Les sections *configuration des accès Google*, *serveur MCP* et *évaluation*
-seront complétées par chaque pull request.
+Serveur MCP : [mcp_server/README.md](mcp_server/README.md). Évaluation : [eval/README.md](eval/README.md).
