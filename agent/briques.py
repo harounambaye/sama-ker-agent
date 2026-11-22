@@ -1,8 +1,8 @@
 """Assemblage des quatre briques de l'agent et de leurs sondes d'état.
 
 Catalogue : serveur MCP de Fatou par défaut (CATALOGUE=mcp), ou catalogue factice
-en mémoire (CATALOGUE=factice) pour travailler sans serveur. Tant que la PR de Papa
-(Google) n'est pas fusionnée, Calendar/Gmail sont des factices ou signalés « non branchés ».
+en mémoire (CATALOGUE=factice) pour travailler sans serveur. Calendar et Gmail :
+factices (BRIQUES=factice) ou intégrations Google de Papa (BRIQUES=google).
 """
 
 from __future__ import annotations
@@ -69,3 +69,24 @@ def sondes(cfg: Config, catalogue, agenda=None, messagerie=None) -> dict[str, Ca
         "calendar": agenda.verifier_etat if agenda else sonde_non_branchee("Calendar"),
         "gmail": messagerie.verifier_etat if messagerie else sonde_non_branchee("Gmail"),
     }
+
+
+def agenda_et_messagerie() -> tuple[object, object]:
+    """Calendar et Gmail selon BRIQUES : « factice » (défaut, enregistrés dans FACTICES_DIR)
+    ou « google » (intégrations de Papa, compte de test et OAuth)."""
+    mode = os.getenv("BRIQUES", "factice").lower()
+    if mode == "factice":
+        from pathlib import Path
+
+        from agent.factices import AgendaFactice, MessagerieFactice
+        dossier = Path(os.getenv("FACTICES_DIR", "data/factices"))
+        return AgendaFactice(dossier / "agenda.json"), MessagerieFactice(dossier / "messagerie.json")
+    if mode != "google":
+        raise SystemExit(f"BRIQUES={mode!r} inconnu : factice ou google.")
+    from integrations.google.calendar import AgendaGoogle
+    from integrations.google.gmail import MessagerieGoogle
+    agenda, messagerie = AgendaGoogle.connecter(), MessagerieGoogle.connecter()
+    for nom, brique in (("Google Calendar", agenda), ("Gmail", messagerie)):
+        if isinstance(brique, dict):  # erreur au format commun
+            raise SystemExit(f"{nom} : [{brique['code']}] {brique['message']}")
+    return agenda, messagerie
