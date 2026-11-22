@@ -1,44 +1,52 @@
-"""Poste du conseiller : validation humaine en ligne de commande.
+"""Poste du conseiller : traitement des emails et validation humaine en ligne de commande.
 
-    python -m agent.conseiller demande "Je cherche un F3 à Mermoz..." --de "Awa <awa@example.com>"
+    python -m agent.conseiller releve                       # emails « à traiter » de la messagerie
+    python -m agent.conseiller demande "Un F3 à Mermoz..." --de "Awa <awa@example.com>"
     python -m agent.conseiller attente
     python -m agent.conseiller valider --conseiller Khady
 
-`demande` simule un email entrant (messagerie factice) et le traite jusqu'à la
-pause de validation. `valider` peut tourner dans un autre terminal, plus tard :
-l'état est conservé par fil Gmail dans le checkpointer SQLite.
+`releve` traite chaque email « à traiter » jusqu'à la pause de validation.
+`demande` simule un email entrant (BRIQUES=factice uniquement) ; avec --fil, il
+répond dans un fil existant (ex. le client choisit un créneau).
+`valider` peut tourner dans un autre terminal, plus tard : l'état est conservé par
+fil Gmail dans le checkpointer SQLite.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
-from pathlib import Path
 from typing import Callable
 
 from agent import config
-from agent.briques import catalogue, sondes
-from agent.conversation import construire_graphe_conversation, decider, demarrer, en_attente
+from agent.briques import agenda_et_messagerie, catalogue, sondes
+from agent.conversation import decider, en_attente
 from agent.etat import VerificateurEtat, bloquer_si_indisponible
-from agent.factices import AgendaFactice, MessagerieFactice
 from agent.memoire import ouvrir_checkpointer
+from agent.pipeline import construire_pipeline, traiter
 from agent.traces import Trace
 from agent.validation import Decision
 
 
 def assembler(cfg: config.Config, verbeux: bool = False):
-    dossier = Path(os.getenv("FACTICES_DIR", "data/factices"))
     outils, brique = catalogue()
-    messagerie = MessagerieFactice(dossier / "messagerie.json")
-    agenda = AgendaFactice(dossier / "agenda.json")
+    agenda, messagerie = agenda_et_messagerie()
     verificateur = VerificateurEtat(sondes(cfg, brique, agenda, messagerie))
     bloquer_si_indisponible(verificateur)
     checkpointer = ouvrir_checkpointer(cfg.checkpoint_db)
-    graphe = construire_graphe_conversation(
+    graphe = construire_pipeline(
         cfg, outils, agenda, messagerie, verificateur,
-        Trace(cfg.traces_dir, etiquette="conversation", verbeux=verbeux), checkpointer,
+        Trace(cfg.traces_dir, etiquette="pipeline", verbeux=verbeux), checkpointer,
     )
     return graphe, checkpointer, messagerie
+
+
+def afficher_resultat(fil_id: str, s: dict) -> None:
+    if s["en_attente"]:
+        afficher_attente(s["en_attente"])
+    else:
+        raison = s.get("raison") or s["etat"].get("incident") or s["etat"].get("note") or ""
+        suite = f" ({raison})" if raison else ""
+        print(f"\n=== Fil {fil_id} terminé sans écriture : {s['issue']}{suite}")
 
 
 def afficher_attente(attente: dict) -> None:
@@ -78,10 +86,12 @@ def demander_decision(attente: dict, conseiller: str,
 def main() -> None:
     p = argparse.ArgumentParser(description="Poste du conseiller Sama Kër")
     sous = p.add_subparsers(dest="commande", required=True)
-    d = sous.add_parser("demande", help="simuler un email entrant et le traiter")
+    sous.add_parser("releve", help="traiter les emails « à traiter » de la messagerie")
+    d = sous.add_parser("demande", help="simuler un email entrant (messagerie factice)")
     d.add_argument("corps")
     d.add_argument("--de", default="Client Test <client@example.com>")
     d.add_argument("--sujet", default="Demande de visite")
+    d.add_argument("--fil", help="répondre dans ce fil (ex. choix d'un créneau)")
     sous.add_parser("attente", help="lister les écritures en attente de validation")
     v = sous.add_parser("valider", help="décider des écritures en attente")
     v.add_argument("--conseiller", required=True, help="nom du conseiller qui valide")
@@ -92,14 +102,22 @@ def main() -> None:
     cfg = config.charger()
     graphe, checkpointer, messagerie = assembler(cfg, args.verbeux)
 
+    if args.commande == "releve":
+        r = messagerie.lire_demandes()
+        if not r.get("ok"):
+            raise SystemExit(f"Lecture des demandes impossible : [{r['code']}] {r['message']}")
+        for demande in r["demandes"]:
+            afficher_resultat(demande["fil_id"], traiter(graphe, demande))
+        print(f"\n{len(r['demandes'])} email(s) traité(s). Validation : "
+              "python -m agent.conseiller valider --conseiller <nom>")
+        return
+
     if args.commande == "demande":
-        demande = messagerie.recevoir(args.de, args.sujet, args.corps)
-        s = demarrer(graphe, cfg, demande)
-        if s["en_attente"]:
-            afficher_attente(s["en_attente"])
-            print("\nEn attente de validation : python -m agent.conseiller valider --conseiller <nom>")
-        else:
-            print(f"Fil {demande['fil_id']} terminé sans écriture : {s['issue']}")
+        if not hasattr(messagerie, "recevoir"):
+            raise SystemExit("« demande » simule un email : BRIQUES=factice uniquement. "
+                             "Avec Gmail, envoyer un vrai email puis lancer « releve ».")
+        demande = messagerie.recevoir(args.de, args.sujet, args.corps, args.fil)
+        afficher_resultat(demande["fil_id"], traiter(graphe, demande))
         return
 
     attentes = en_attente(graphe, checkpointer)
@@ -117,8 +135,11 @@ def main() -> None:
         if decision is None:
             continue
         s = decider(graphe, cfg, a["fil_id"], decision)
-        if s["en_attente"]:
-            print(f"Toujours en attente : {s['en_attente'].get('incident')}")
+        if s["en_attente"] and s["en_attente"].get("incident"):
+            print(f"Toujours en attente : {s['en_attente']['incident']}")
+        elif s["en_attente"]:
+            print("Étape suivante à valider :")
+            afficher_attente(s["en_attente"])
         else:
             print(f"Fil {a['fil_id']} : {s['issue']}")
 
