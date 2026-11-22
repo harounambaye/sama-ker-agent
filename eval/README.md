@@ -186,5 +186,6 @@ Avec l'agent de l'exercice 1, `decision` et `creneaux` valent `None` : seuls les
 
 |---|---|---|
 
-| \[exercice1](resultats/exercice1.md) | Boucle de l'exercice 1, catalogue SQLite | 10/15 (66,7 %) |
-
+| [exercice1](resultats/exercice1.md) | Boucle de l'exercice 1, catalogue SQLite (21 novembre) | 8/15 (53,3 %) |
+| [pipeline](resultats/pipeline.md) | Pipeline final, avec validation humaine (21 novembre) | 8/15 (53,3 %) |
+| [comparaison](resultats/comparaison.md) | Avant / après, lu dans [conclusions_finales.md](conclusions_finales.md) | — |
