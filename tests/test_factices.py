@@ -15,10 +15,19 @@ def visite():
 
 # ----------------------------- agenda ----------------------------------- #
 
-def test_creneaux_de_45_minutes_jusqu_a_18h():
+def test_visites_de_45_minutes_tous_les_quarts_d_heure_jusqu_a_18h():
     r = AgendaFactice().lister_creneaux_libres("aminata", JEUDI_15H, JEUDI_18H)
-    assert [c["debut"][11:16] for c in r["creneaux"]] == ["15:00", "15:45", "16:30", "17:15"]
+    assert [c["debut"][11:16] for c in r["creneaux"]] == [
+        "15:00", "15:15", "15:30", "15:45", "16:00", "16:15", "16:30", "16:45", "17:00", "17:15"]
     assert r["creneaux"][-1]["fin"] == JEUDI_18H
+
+
+def test_un_creneau_qui_chevauche_une_visite_n_est_pas_libre(visite):
+    agenda = AgendaFactice()
+    agenda.creer_visite(**visite)                       # 15:45 - 16:30
+    r = agenda.lister_creneaux_libres("aminata", JEUDI_15H, JEUDI_18H)
+    assert [c["debut"][11:16] for c in r["creneaux"]] == [
+        "15:00", "16:30", "16:45", "17:00", "17:15"]
 
 
 def test_pas_de_creneau_le_dimanche():

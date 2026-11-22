@@ -128,8 +128,11 @@ def _date(iso: str) -> datetime:
     return d.replace(tzinfo=DAKAR) if d.tzinfo is None else d.astimezone(DAKAR)
 
 
+PAS = timedelta(minutes=15)  # même grille que l'intégration Google Calendar
+
+
 def _creneaux_du_jour(jour: datetime) -> list[datetime]:
-    """Débuts de visite d'une journée ouvrée : 9h00, 9h45, ... dernier fini à 18h00."""
+    """Débuts de visite d'une journée ouvrée : 9h00, 9h15, ... dernier fini à 18h00."""
     if jour.weekday() not in JOURS_OUVRES:
         return []
     debut = jour.replace(hour=HEURE_OUVERTURE, minute=0, second=0, microsecond=0)
@@ -137,7 +140,7 @@ def _creneaux_du_jour(jour: datetime) -> list[datetime]:
     creneaux = []
     while debut + DUREE <= fermeture:
         creneaux.append(debut)
-        debut += DUREE
+        debut += PAS
     return creneaux
 
 
