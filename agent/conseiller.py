@@ -49,6 +49,15 @@ def afficher_resultat(fil_id: str, s: dict) -> None:
         print(f"\n=== Fil {fil_id} terminé sans écriture : {s['issue']}{suite}")
 
 
+def suggerer_reponse_client(fil_id: str, s: dict) -> None:
+    """Après l'envoi de créneaux : la commande qui simule le choix du client dans ce fil."""
+    if s.get("issue") == "envoye" and s["etat"].get("creneaux_proposes"):
+        expediteur = s["etat"].get("expediteur", "Client <client@example.com>")
+        print("Pour simuler la réponse du client dans ce fil :\n"
+              f'  python -m agent.conseiller demande "Le deuxième créneau me convient" '
+              f'--de "{expediteur}" --fil {fil_id}')
+
+
 def afficher_attente(attente: dict) -> None:
     p = attente["proposition"]
     print(f"\n=== Fil {attente['fil_id']} · {p['type']} · {p['resume']}")
@@ -142,6 +151,7 @@ def main() -> None:
             afficher_attente(s["en_attente"])
         else:
             print(f"Fil {a['fil_id']} : {s['issue']}")
+            suggerer_reponse_client(a["fil_id"], s)
 
 
 if __name__ == "__main__":

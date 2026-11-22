@@ -258,3 +258,12 @@ def test_gmail_indisponible_rien_n_est_fait(agence):
 def test_tri_impossible_transmis(agence):
     s = agence.traiter(agence.recevoir(), message([texte("pas du json")], "end_turn"))
     assert s["issue"] == "transmis" and "Tri impossible" in s["etat"]["note"]
+
+
+def test_apres_envoi_des_creneaux_la_commande_suivante_est_affichee(agence, capsys):
+    from agent.conseiller import suggerer_reponse_client
+    d = proposer_puis_envoyer(agence)
+    s = agence.graphe.get_state({"configurable": {"thread_id": d["fil_id"]}})
+    suggerer_reponse_client(d["fil_id"], {"issue": "envoye", "etat": s.values})
+    sortie = capsys.readouterr().out
+    assert f"--fil {d['fil_id']}" in sortie and '--de "Awa Ndiaye <awa@example.com>"' in sortie
