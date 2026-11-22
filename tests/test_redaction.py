@@ -61,3 +61,10 @@ def test_controle_mise_en_forme():
     assert "Markdown" in controler("**Référence** SK-001", {"SK-001"})
     assert "Objet" in controler("Objet : Re: visite\nBonjour", set())
     assert controler("Bonjour, SK-001.", {"SK-001"}) is None
+
+
+def test_note_sans_phrase_sur_la_mecanique():
+    from agent.redaction import nettoyer_note
+    note = ("Le client choisit le 2e créneau. Vérifier que le repère [CRENEAUX] est remplacé "
+            "par la date retenue. Bien disponible.")
+    assert nettoyer_note(note) == "Le client choisit le 2e créneau. Bien disponible."

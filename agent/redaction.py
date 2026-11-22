@@ -137,5 +137,14 @@ def rediger(client: anthropic.Anthropic, cfg: Config, trace: Trace, *, cas: Cas,
         trace.evenement("controle_redaction", cas=cas, probleme=probleme, email=email)
         return erreur("INTERNE", f"Email refusé par le contrôle : {probleme}.") | {
             k: r[k] for k in ("tokens_entree", "tokens_sortie")}
-    trace.evenement("redaction", cas=cas, email=email, note=sortie["note_conseiller"])
-    return r | {"email": email, "note": sortie["note_conseiller"].strip()}
+    note = nettoyer_note(sortie["note_conseiller"])
+    trace.evenement("redaction", cas=cas, email=email, note=note)
+    return r | {"email": email, "note": note}
+
+
+def nettoyer_note(note: str) -> str:
+    """Retire les phrases qui décrivent la mécanique (repère, insertion par le code) :
+    elles n'aident pas le conseiller."""
+    phrases = re.split(r"(?<=[.!?])\s+", note.strip())
+    mecanique = re.compile(r"\[CRENEAUX\]|repère|insér|remplac", re.I)
+    return " ".join(p for p in phrases if p and not mecanique.search(p))
