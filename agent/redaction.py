@@ -49,11 +49,13 @@ apparaître, écris le repère [CRENEAUX] seul sur sa ligne. Le code le remplace
 
 Forme de email_client : texte brut (aucun Markdown, ni gras, ni titre), sans ligne \
 « Objet », courtois et concis. Commence par « Bonjour » suivi du prénom ou du nom du \
-client s'il est connu. Termine par « Cordialement,\\nSama Kër Immobilier ». \
+client s'il est connu. Sépare chaque paragraphe par une ligne vide. Termine par \
+« Cordialement, » puis « Sama Kër Immobilier » sur la ligne suivante. \
 Aucune phrase destinée au conseiller dans email_client.
 
 note_conseiller : une ou deux phrases pour le conseiller qui relit (points d'attention, \
-écarts avec la demande). Chaîne vide s'il n'y a rien à signaler.
+écarts avec la demande). Ne décris pas ton fonctionnement (repère, insertion des \
+créneaux, règles de rédaction). Chaîne vide s'il n'y a rien à signaler.
 
 Selon le champ "cas" des faits :
 - proposer : présente chaque bien (référence exacte SK-xxx, type, quartier, nombre de \
