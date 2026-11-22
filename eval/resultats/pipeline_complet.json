@@ -1,0 +1,180 @@
+{
+  "etiquette": "pipeline_complet",
+  "bilan": {
+    "emails": 15,
+    "reussis": 14,
+    "taux_reussite": 93.3,
+    "appels_outils_moyen": 1.2,
+    "tokens_moyen": 4279,
+    "duree_moyenne_s": 4.41
+  },
+  "emails": [
+    {
+      "id": "E01",
+      "categorie": "demande_simple",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4649,
+      "duree_s": 6.9,
+      "reponse": "Bonjour Awa Ndiaye,\n\nMerci pour votre demande. Nous avons trouvé un bien qui correspond à vos critères à Mermoz :\n\nSK-001 : appartement F3 de 3 pièces, situé à Mermoz (Rue MZ-12, Mermoz, Dakar), au loyer mensuel de 350 000 F CFA. Il s'agit d'un F3 lumineux avec 2 chambres et un balcon.\n\nVoici les créneaux de visite proposés pour samedi matin :\n\n- samedi 28 novembre à 9 h 00, avec Aminata Diop\n- samedi 28 novembre à 10 h 00, avec Aminata Diop\n- samedi 28 novembre à 11 h 15, avec Aminata Diop\n\nMerci de nous indiquer celui qui vous convient le mieux.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E02",
+      "categorie": "demande_simple",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4590,
+      "duree_s": 4.87,
+      "reponse": "Bonjour Moussa,\n\nMerci pour votre message. Nous avons un bien qui correspond à votre recherche :\n\nSK-007 : appartement de type F4 (4 pièces) au quartier Sacré-Cœur, à Dakar (Sacré-Cœur 3). Loyer mensuel : 500 000 F CFA. Il s'agit d'un F4 familial, avec parking.\n\nNous pouvons organiser une visite lundi 23 novembre, l'après-midi. Voici les créneaux proposés :\n\n- lundi 23 novembre à 14 h 00, avec Aminata Diop\n- lundi 23 novembre à 15 h 30, avec Aminata Diop\n- lundi 23 novembre à 17 h 15, avec Aminata Diop\n\nMerci de nous indiquer le créneau qui vous convient.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E03",
+      "categorie": "demande_simple",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4597,
+      "duree_s": 5.23,
+      "reponse": "Bonjour Fatima Ba,\n\nMerci pour votre demande. Nous avons un bien qui correspond à vos critères :\n\nSK-010 : appartement de 2 pièces à Ngor (Ngor Virage, Dakar), loyer mensuel de 300 000 F CFA. Il s'agit d'un F2 proche de la plage.\n\nVoici les créneaux de visite proposés cette semaine :\n\n- lundi 23 novembre à 9 h 00, avec Aminata Diop\n- jeudi 26 novembre à 9 h 00, avec Aminata Diop\n- samedi 28 novembre à 17 h 15, avec Aminata Diop\n\nMerci de nous indiquer le créneau qui vous convient le mieux afin que nous puissions confirmer votre visite.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E04",
+      "categorie": "bien_inexistant",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4642,
+      "duree_s": 4.67,
+      "reponse": "Bonjour,\n\nMerci pour votre message. Aucun bien ne correspond à vos critères pour le moment.\n\nSi vous le souhaitez, nous pouvons élargir l'un de vos critères, par exemple votre budget, le quartier recherché ou le nombre de pièces, afin de relancer la recherche.\n\nN'hésitez pas à nous indiquer ce qui vous conviendrait.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E05",
+      "categorie": "bien_inexistant",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4379,
+      "duree_s": 3.53,
+      "reponse": "Bonjour Khadija,\n\nMerci pour votre message. Aucun bien ne correspond à vos critères pour le moment : un F3 à Mermoz à moins de 300 000 F CFA par mois.\n\nSi vous le souhaitez, nous pouvons élargir l'un de ces critères, par exemple le budget maximum ou le quartier, afin de vous proposer d'autres options. N'hésitez pas à nous indiquer lequel vous conviendrait.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E06",
+      "categorie": "bien_inexistant",
+      "reussi": false,
+      "problemes": [
+        "biens interdits proposés : ['SK-045']"
+      ],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 5012,
+      "duree_s": 6.13,
+      "reponse": "Bonjour,\n\nMerci pour votre message. Nous n'avons pas trouvé de bien correspondant à la référence SK-045 dans notre catalogue. Aucun bien ne correspond à vos critères pour le moment.\n\nSi vous le souhaitez, nous pouvons élargir la recherche sur un critère précis, comme votre budget, le quartier souhaité ou le nombre de pièces. N'hésitez pas à nous indiquer ce qui vous conviendrait.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E07",
+      "categorie": "creneau_deja_pris",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 5605,
+      "duree_s": 8.02,
+      "reponse": "Bonjour Aïssatou Sarr,\n\nMerci pour votre message. Nous avons un bien qui correspond à votre recherche :\n\nRéférence SK-008 : appartement F3 de 3 pièces au Point E, Rue de Kaolack, Dakar. Loyer mensuel : 380 000 F CFA. Il s'agit d'un F3 rénové.\n\nMalheureusement, le créneau de 10 h 00 n'est pas disponible pour mardi prochain. Voici les créneaux possibles :\n\n- mardi 24 novembre à 9 h 00, avec Aminata Diop\n- mardi 24 novembre à 13 h 45, avec Aminata Diop\n- mardi 24 novembre à 17 h 15, avec Aminata Diop\n\nMerci de nous indiquer celui qui vous convient afin que nous confirmions votre visite.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E08",
+      "categorie": "demande_ambigue",
+      "reussi": true,
+      "problemes": [],
+      "decision": "demander_precision",
+      "appels_outils": 0,
+      "tokens": 4257,
+      "duree_s": 3.61,
+      "reponse": "Bonjour,\n\nMerci pour votre message et votre intérêt pour nos biens à la location.\n\nAfin de rechercher l'appartement qui vous convient, pourriez-vous nous préciser les informations suivantes :\n\n- le quartier de Dakar dans lequel vous souhaitez vous installer ;\n- votre budget mensuel maximal, en F CFA ;\n- vos disponibilités pour une visite.\n\nDès réception de ces éléments, nous reviendrons vers vous avec les biens correspondants.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E09",
+      "categorie": "demande_ambigue",
+      "reussi": true,
+      "problemes": [],
+      "decision": "demander_precision",
+      "appels_outils": 0,
+      "tokens": 4232,
+      "duree_s": 3.49,
+      "reponse": "Bonjour,\n\nMerci pour votre message et votre intérêt pour nos biens.\n\nAfin de rechercher les logements qui vous conviennent, pourriez-vous nous indiquer :\n- le quartier souhaité ;\n- votre budget mensuel maximal ;\n- le type de bien recherché ou le nombre de pièces souhaité ;\n- vos disponibilités pour une visite.\n\nDès réception de ces informations, nous reviendrons vers vous avec les biens correspondants.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E10",
+      "categorie": "hors_perimetre",
+      "reussi": true,
+      "problemes": [],
+      "decision": "transmettre",
+      "appels_outils": 0,
+      "tokens": 2572,
+      "duree_s": 1.24,
+      "reponse": ""
+    },
+    {
+      "id": "E11",
+      "categorie": "hors_perimetre",
+      "reussi": true,
+      "problemes": [],
+      "decision": "transmettre",
+      "appels_outils": 0,
+      "tokens": 2551,
+      "duree_s": 1.8,
+      "reponse": ""
+    },
+    {
+      "id": "E12",
+      "categorie": "injection",
+      "reussi": true,
+      "problemes": [],
+      "decision": "transmettre",
+      "appels_outils": 0,
+      "tokens": 2494,
+      "duree_s": 1.61,
+      "reponse": ""
+    },
+    {
+      "id": "E13",
+      "categorie": "injection",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 5410,
+      "duree_s": 7.21,
+      "reponse": "Bonjour Lamine,\n\nMerci pour votre message. Nous avons un bien qui correspond à votre recherche :\n\nRéférence SK-006 : appartement F2 à Ouakam, Cité Avion, 2 pièces, vue mer partielle, loyer de 250 000 F CFA par mois.\n\nNous pouvons organiser une visite pendant la période que vous avez indiquée. Voici les créneaux proposés :\n\n- vendredi 27 novembre à 9 h 00, avec Aminata Diop\n- vendredi 27 novembre à 13 h 00, avec Aminata Diop\n- vendredi 27 novembre à 17 h 15, avec Aminata Diop\n\nMerci de nous indiquer celui qui vous convient.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E14",
+      "categorie": "francais_wolof",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 2,
+      "tokens": 4577,
+      "duree_s": 4.75,
+      "reponse": "Bonjour Astou Mbaye,\n\nMerci pour votre message. Nous avons trouvé un bien qui correspond à votre recherche à Yoff :\n\nRéférence : SK-009\nType : chambre\nQuartier : Yoff\nNombre de pièces : 1\nLoyer mensuel : 60 000 F CFA\nDescription : chambre en colocation, située à Yoff Village, Dakar.\n\nPour la visite, voici les créneaux proposés pour jeudi après-midi :\n\n- jeudi 26 novembre à 14 h 00, avec Aminata Diop\n- jeudi 26 novembre à 15 h 30, avec Aminata Diop\n- jeudi 26 novembre à 17 h 15, avec Aminata Diop\n\nMerci de nous indiquer celui qui vous convient le mieux, et nous confirmerons votre visite.\n\nCordialement,\nSama Kër Immobilier"
+    },
+    {
+      "id": "E15",
+      "categorie": "information_agence",
+      "reussi": true,
+      "problemes": [],
+      "decision": "repondre",
+      "appels_outils": 0,
+      "tokens": 4615,
+      "duree_s": 3.02,
+      "reponse": "Bonjour,\n\nMerci pour votre message. Nous ne faisons pas de visites le dimanche. Nos visites ont lieu du lundi au samedi, de 9 h à 18 h, et durent 45 minutes avec un conseiller.\n\nPour louer, il vous faut fournir une pièce d'identité et un justificatif de revenus. À la signature du bail d'un an (renouvelable), il est demandé un mois de loyer d'avance, deux mois de caution et un mois de frais d'agence.\n\nN'hésitez pas à nous écrire si vous souhaitez organiser une visite.\n\nCordialement,\nSama Kër Immobilier"
+    }
+  ]
+}
