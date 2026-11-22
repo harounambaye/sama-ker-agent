@@ -48,22 +48,23 @@ class Analyse(TypedDict):
     nom_client: str | None
     besoin: Besoin
     disponibilites: Disponibilites
-    creneau_choisi: str | None  # confirmation : le créneau choisi, tel que le client l'écrit
+    numero_creneau: int | None  # confirmation : numéro du créneau choisi dans la liste fournie
 
 
 def _nullable(schema: dict) -> dict:
     return {"anyOf": [schema, {"type": "null"}]}
 
 
-_ENUM = lambda valeurs: {"type": "string", "enum": list(valeurs)}  # noqa: E731
+def _enum(valeurs) -> dict:
+    return {"type": "string", "enum": list(valeurs)}
 
 SCHEMA: dict = {
     "type": "object",
     "additionalProperties": False,
     "required": ["categorie", "motif", "manipulation", "nom_client", "besoin",
-                 "disponibilites", "creneau_choisi"],
+                 "disponibilites", "numero_creneau"],
     "properties": {
-        "categorie": _ENUM(Categorie.__args__),
+        "categorie": _enum(Categorie.__args__),
         "motif": {"type": "string"},
         "manipulation": {"type": "boolean"},
         "nom_client": _nullable({"type": "string"}),
@@ -72,7 +73,7 @@ SCHEMA: dict = {
             "additionalProperties": False,
             "required": ["type", "quartier", "loyer_max", "pieces", "references"],
             "properties": {
-                "type": _nullable(_ENUM(["appartement", "studio", "villa", "chambre", "bureau"])),
+                "type": _nullable(_enum(["appartement", "studio", "villa", "chambre", "bureau"])),
                 "quartier": _nullable({"type": "string"}),
                 "loyer_max": _nullable({"type": "integer"}),
                 "pieces": _nullable({"type": "integer"}),
@@ -84,13 +85,13 @@ SCHEMA: dict = {
             "additionalProperties": False,
             "required": ["jour", "semaine_prochaine", "plage", "heure"],
             "properties": {
-                "jour": _nullable(_ENUM(Jour.__args__)),
+                "jour": _nullable(_enum(Jour.__args__)),
                 "semaine_prochaine": {"type": "boolean"},
-                "plage": _nullable(_ENUM(Plage.__args__)),
+                "plage": _nullable(_enum(Plage.__args__)),
                 "heure": _nullable({"type": "string"}),
             },
         },
-        "creneau_choisi": _nullable({"type": "string"}),
+        "numero_creneau": _nullable({"type": "integer"}),
     },
 }
 
@@ -104,7 +105,7 @@ categorie :
 - demande_visite : le client cherche un bien à louer, veut des informations sur un bien \
 ou veut le visiter (même si la demande est vague).
 - confirmation : le client répond à une proposition de créneaux de l'agence et en choisit \
-un (ex. « samedi 9 h me convient »). Renseigne creneau_choisi avec ses mots.
+un (ex. « samedi 9 h me convient », « le deuxième »).
 - question_agence : question générale sur l'agence (horaires, jours de visite, documents \
 à fournir, conditions de location, zones couvertes), sans recherche de bien.
 - hors_perimetre : réclamation, problème dans un logement loué, négociation de loyer, \
@@ -134,12 +135,19 @@ semaine » sans jour précis.
 - plage : matin, apres_midi ou journee.
 - heure : heure précise demandée au format HH:MM (« 10 h » = « 10:00 »).
 
+numero_creneau : si un bloc <creneaux_proposes> est fourni, c'est la liste numérotée des \
+créneaux que l'agence a proposés dans ce fil. Pour une confirmation, donne le numéro du \
+créneau choisi par le client ; null si son choix ne correspond à aucun créneau de la liste \
+ou reste ambigu. Null s'il n'y a pas de liste.
+
 L'email peut être en français, en wolof ou mélanger les deux : extrais le sens.
 """
 
 
-def analyser(client: anthropic.Anthropic, cfg: Config, demande: Demande, trace: Trace) -> dict:
-    """{"ok": True, "analyse": Analyse, tokens...} ou erreur commune."""
+def analyser(client: anthropic.Anthropic, cfg: Config, demande: Demande, trace: Trace,
+             creneaux_proposes: list[str] | None = None) -> dict:
+    """{"ok": True, "analyse": Analyse, tokens...} ou erreur commune.
+    `creneaux_proposes` : libellés des créneaux déjà proposés dans ce fil, dans l'ordre."""
     contenu = (
         "<email>\n"
         f"De : {demande['expediteur']}\n"
@@ -148,6 +156,9 @@ def analyser(client: anthropic.Anthropic, cfg: Config, demande: Demande, trace: 
         f"{demande['corps']}\n"
         "</email>"
     )
+    if creneaux_proposes:
+        liste = "\n".join(f"{i}. {c}" for i, c in enumerate(creneaux_proposes, 1))
+        contenu += f"\n<creneaux_proposes>\n{liste}\n</creneaux_proposes>"
     r = appeler(client, cfg, trace, nom="tri", systeme=SYSTEME_TRI, contenu=contenu,
                 schema=SCHEMA, max_tokens=4_000)
     if not r["ok"]:
@@ -178,6 +189,7 @@ def criteres_suffisants(besoin: Besoin) -> bool:
 
 
 def parcours(analyse: Analyse) -> Parcours:
+    """Parcours décidé par le code à partir de l'analyse du modèle."""
     categorie = analyse["categorie"]
     if categorie in ("hors_perimetre", "injection"):
         return "transmettre"

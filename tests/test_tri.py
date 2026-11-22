@@ -20,7 +20,7 @@ def analyse(categorie="demande_visite", manipulation=False, **besoin):
     b = {"type": None, "quartier": None, "loyer_max": None, "pieces": None, "references": []}
     b |= besoin
     return {"categorie": categorie, "motif": "m", "manipulation": manipulation,
-            "nom_client": "Awa", "besoin": b, "creneau_choisi": None,
+            "nom_client": "Awa", "besoin": b, "numero_creneau": None,
             "disponibilites": {"jour": "samedi", "semaine_prochaine": False,
                                "plage": "matin", "heure": None}}
 
@@ -41,6 +41,16 @@ def test_requete_sortie_typee_et_email_encadre(cfg):
     contenu = requete["messages"][0]["content"]
     assert contenu.startswith("<email>") and contenu.rstrip().endswith("</email>")
     assert "Reçu le : 2026-11-17" in contenu
+
+
+def test_creneaux_deja_proposes_numerotes_pour_la_confirmation(cfg):
+    client = FauxClient([json_modele(analyse("confirmation") | {"numero_creneau": 2})])
+    r = analyser(client, cfg, DEMANDE, Trace(cfg.traces_dir),
+                 ["samedi 21 novembre à 9 h 00", "samedi 21 novembre à 10 h 30"])
+    assert r["analyse"]["numero_creneau"] == 2
+    contenu = client.requetes[0]["messages"][0]["content"]
+    assert "<creneaux_proposes>\n1. samedi 21 novembre à 9 h 00\n2. samedi" in contenu
+    assert contenu.index("</email>") < contenu.index("<creneaux_proposes>")
 
 
 def test_schema_strict_partout():
