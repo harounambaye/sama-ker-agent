@@ -70,3 +70,12 @@ def test_nettoyer_schema_garde_les_types_reels():
     brut = {"title": "X", "type": "object", "properties": {
         "q": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None, "title": "Q"}}}
     assert _nettoyer_schema(brut) == {"type": "object", "properties": {"q": {"type": "string"}}}
+
+
+def test_ressource_de_l_agence(outils):
+    r = outils.lire_ressource("agence://informations")
+    assert r["ok"] and "dimanche" in r["texte"] and "identité" in r["texte"]
+
+
+def test_ressource_inconnue(outils):
+    assert outils.lire_ressource("agence://inconnue")["ok"] is False

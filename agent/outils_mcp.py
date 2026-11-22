@@ -170,6 +170,17 @@ class OutilsMCP:
         return resultat if isinstance(resultat, dict) else erreur(
             "INTERNE", f"Réponse inattendue du serveur pour {nom}.")
 
+    def lire_ressource(self, uri: str) -> dict:
+        """{"ok": True, "texte"} ou erreur commune (ressource MCP, ex. agence://informations)."""
+        try:
+            r = self._executer(lambda c: c.read_resource(uri))
+        except DelaiDepasse:
+            return erreur("DELAI_DEPASSE", f"Ressource {uri} : pas de réponse en {self._delai_s:.0f} s.")
+        except Exception as e:
+            return erreur("INDISPONIBLE", f"Ressource {uri} illisible ({_cause(e)}).")
+        texte = "".join(getattr(c, "text", "") for c in r.contents)
+        return {"ok": True, "texte": texte} if texte else erreur("INTROUVABLE", f"Ressource {uri} vide.")
+
     def verifier_etat(self) -> dict:
         """Sonde de la brique catalogue : la session répond ET la base est saine."""
         if self._client is None:
