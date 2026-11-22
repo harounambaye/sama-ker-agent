@@ -98,8 +98,51 @@ python -m agent.conseiller attente
 python -m agent.conseiller valider --conseiller Khady     # o / m / n / p
 ```
 
-Tant que la PR Google n'est pas fusionnée, Gmail et Calendar sont des factices
-conformes aux contrats, enregistrés dans `data/factices/` (`FACTICES_DIR`).
+Gmail et Calendar : factices conformes aux contrats, enregistrés dans
+`data/factices/` (`BRIQUES=factice`, par défaut), ou intégrations Google
+(`BRIQUES=google`, compte de test).
+
+## Pipeline complet (exercice 5)
+
+Le modèle **comprend** (tri) et **rédige** ; le **code** cherche, choisit les
+créneaux, contrôle et décide ([agent/pipeline.py](agent/pipeline.py)).
+
+```
+email -> trier : 1 appel au modèle, sortie typée (catégorie, besoin, disponibilités)
+  hors périmètre / injection -> libellé « transmis », aucun brouillon
+  demande incomplète         -> brouillon qui demande ce qui manque      -> valider -> envoi
+  question sur l'agence      -> réponse tirée de agence://informations   -> valider -> envoi
+  demande de visite          -> catalogue // agenda (en parallèle)
+                                -> 3 créneaux libres, jamais dans le passé
+                                -> rédaction, créneaux insérés par le code -> valider -> envoi
+  le client choisit un créneau (même fil) -> valider la visite -> création dans l'agenda
+                                -> email de confirmation -> valider -> envoi
+       créneau pris entre-temps -> nouveaux créneaux -> valider -> envoi
+```
+
+| Étape | Fichier | Garantie |
+|---|---|---|
+| Tri et extraction | [agent/tri.py](agent/tri.py) | sortie JSON conforme au schéma ; le parcours est décidé par le code |
+| Dates | [agent/dates.py](agent/dates.py) | « samedi matin », « mardi prochain » -> fenêtre réelle, fuseau de Dakar |
+| Recherche | [agent/recherche.py](agent/recherche.py) | catalogue et agenda en parallèle ; une brique en erreur est revérifiée, puis transmise |
+| Rédaction | [agent/redaction.py](agent/redaction.py) | le modèle n'écrit aucune date ; toute référence citée vient des faits |
+| Modèle | [agent/modele.py](agent/modele.py) | bascule sur `MODEL_SECOURS` si le modèle principal est surchargé |
+
+Le fil Gmail est la clé de la conversation : quand le client répond, les créneaux
+proposés sont retrouvés et numérotés pour le tri. Un email qui arrive sur un fil
+déjà en attente de validation est laissé « à traiter ».
+
+```bash
+python -m agent.conseiller releve                     # emails « à traiter » de la messagerie
+python -m agent.conseiller demande "Un F3 à Mermoz, 400 000 F max, samedi matin" --de "Awa <awa@example.com>"
+python -m agent.conseiller valider --conseiller Khady  # envoi de la proposition
+python -m agent.conseiller demande "Le deuxième créneau me convient" --de "Awa <awa@example.com>" --fil fil-m0001
+python -m agent.conseiller valider --conseiller Khady  # visite, puis confirmation
+```
+
+Pour l'évaluation, `agent.pipeline.resultat_evaluation()` renvoie la décision
+(`repondre`, `demander_precision`, `transmettre`, `creer_visite`), le brouillon,
+les créneaux proposés, les appels d'outils et les tokens.
 
 ## Tests
 
