@@ -1,7 +1,8 @@
 """Évaluation de l'agent Sama Kër Immobilier sur le jeu de 15 emails (exercice 6).
 
 Lancement, depuis la racine du dépôt :
-    python -m eval.evaluer --etiquette avant              # pipeline final (clé API nécessaire)
+    python -m eval.evaluer --etiquette apres              # pipeline complet (clé API nécessaire)
+    python -m eval.evaluer --etiquette avant --agent validation  # graphe de validation
     python -m eval.evaluer --etiquette ex1 --agent exercice1  # boucle de l'exercice 1
     python -m eval.evaluer --etiquette essai --simulation # sans API : teste le script lui-même
     python -m eval.evaluer --etiquette avant --limite 3   # seulement les 3 premiers emails
@@ -18,7 +19,7 @@ import json
 import re
 import time
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 DOSSIER = Path(__file__).resolve().parent
@@ -37,7 +38,7 @@ JOURS = {"lundi": 0, "mardi": 1, "mercredi": 2, "jeudi": 3, "vendredi": 4, "same
 #   reponse           texte du brouillon rédigé par l'agent ("" si aucun)
 #   creneaux          liste de débuts de créneaux proposés, ISO 8601 (None si non fourni)
 #   appels_outils, tokens_entree, tokens_sortie
-# Quand le pipeline complet (exercice 5) sera fusionné, seul adaptateur_agent change.
+# adaptateur_pipeline (pipeline complet) est utilisé par défaut.
 
 
 def texte_de_l_email(email: dict) -> str:
@@ -75,9 +76,76 @@ def adaptateur_agent():
     return traiter
 
 
+def occuper_mardi_10h(agenda, maintenant=None):
+    """Préparation de E07 : le créneau de mardi prochain 10 h 00 - 10 h 45 est déjà pris
+    chez les trois conseillers. Les deux prochains mardis sont occupés, car « mardi
+    prochain » peut désigner l'un ou l'autre selon le jour où l'évaluation est lancée."""
+    from agent.dates import DAKAR
+    from contracts import CONSEILLERS
+
+    maintenant = maintenant or datetime.now(DAKAR)
+    jours = (1 - maintenant.weekday()) % 7 or 7          # 1 = mardi
+    mardi = (maintenant + timedelta(days=jours)).replace(hour=10, minute=0, second=0, microsecond=0)
+    for jour in (mardi, mardi + timedelta(days=7)):
+        for conseiller in CONSEILLERS:
+            r = agenda.creer_visite(conseiller, jour.isoformat(), "SK-002", "Préparation E07",
+                                    "Rendez-vous existant", "occupe@example.com",
+                                    f"preparation-e07-{conseiller}-{jour:%Y%m%d}")
+            if not r.get("ok"):
+                raise RuntimeError(f"Préparation de E07 impossible : {r}")
+
+
 def adaptateur_pipeline():
-    """Pipeline final (exercice 5) : chaque email est reçu dans une messagerie factice,
+    """Pipeline complet de l'exercice 5 (tri, recherche, rédaction, validation).
+
+    Chaque email est reçu dans une messagerie factice et traité jusqu'à la pause de
+    validation : rien n'est envoyé. agent.pipeline.resultat_evaluation renvoie directement
+    la décision (repondre, demander_precision, transmettre, creer_visite), la réponse,
+    les créneaux proposés (ISO 8601), les appels d'outils et les tokens.
+    """
+    import tempfile
+
+    from agent import config
+    from agent.briques import sondes
+    from agent.etat import VerificateurEtat
+    from agent.factices import AgendaFactice, MessagerieFactice
+    from agent.memoire import ouvrir_checkpointer
+    from agent.outils import OutilsCatalogueLocal
+    from agent.pipeline import construire_pipeline, resultat_evaluation
+    from agent.pipeline import traiter as traiter_email
+    from agent.traces import Trace
+    from mcp_server.catalogue import CatalogueSQLite
+
+    cfg = config.charger()
+    catalogue = CatalogueSQLite()
+    messagerie = MessagerieFactice()  # en mémoire : aucun vrai email
+    agenda = AgendaFactice()          # en mémoire : aucun vrai agenda
+    verificateur = VerificateurEtat(sondes(cfg, catalogue, agenda, messagerie))
+    dossier = Path(tempfile.mkdtemp(prefix="eval-"))
+    checkpointer = ouvrir_checkpointer(dossier / "checkpoints.sqlite")
+
+    def traiter(email: dict) -> dict:
+        if email.get("preparation"):      # E07 : créneau déjà pris
+            occuper_mardi_10h(agenda)
+        trace = Trace(cfg.traces_dir, etiquette=f"eval-{email['id']}", verbeux=False)
+        graphe = construire_pipeline(
+            cfg, OutilsCatalogueLocal(catalogue), agenda, messagerie, verificateur,
+            trace, checkpointer,
+        )
+        demande = messagerie.recevoir(email["expediteur"], email["objet"], email["corps"])
+        situation = traiter_email(graphe, demande)
+        resultat = resultat_evaluation(situation)
+        if situation.get("issue") == "reporte":
+            resultat["decision"] = "reporte"
+        return resultat
+
+    return traiter
+
+
+def adaptateur_graphe_validation():
+    """Graphe de validation (intermédiaire, avant le pipeline complet) : chaque email est
     traité jusqu'à la pause de validation, puis laissé en attente. Rien n'est envoyé.
+    Conservé pour pouvoir reproduire la colonne « avant » de la comparaison.
 
     Décisions renvoyées :
       "brouillon"   un brouillon de réponse attend la validation d'un conseiller
@@ -181,7 +249,8 @@ def verifier(attendu: dict, resultat: dict) -> list[str]:
 
     decision = resultat["decision"]
     if decision == "brouillon":
-        # Le pipeline ne distingue pas « répondre » de « demander une précision » :
+        # Graphe de validation (intermédiaire) : il ne distingue pas « répondre »
+        # de « demander une précision » :
         # un brouillon est correct dès qu'une réponse rédigée était attendue.
         if attendu["decision"] == "transmettre":
             problemes.append("brouillon rédigé au lieu de transmettre à un conseiller")
@@ -292,8 +361,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Évalue l'agent sur le jeu de 15 emails.")
     parser.add_argument("--etiquette", required=True, help="nom de l'évaluation, ex. avant ou apres")
     parser.add_argument("--simulation", action="store_true", help="faux agent, sans appel à l'API")
-    parser.add_argument("--agent", choices=["pipeline", "exercice1"], default="pipeline",
-                        help="pipeline final (par défaut) ou boucle de l'exercice 1")
+    parser.add_argument("--agent", choices=["pipeline", "validation", "exercice1"],
+                        default="pipeline",
+                        help="pipeline complet (par défaut), graphe de validation "
+                             "(intermédiaire) ou boucle de l'exercice 1")
     parser.add_argument("--limite", type=int, help="n'évaluer que les N premiers emails")
     args = parser.parse_args()
 
@@ -305,6 +376,8 @@ def main() -> None:
         traiter = adaptateur_simulation()
     elif args.agent == "exercice1":
         traiter = adaptateur_agent()
+    elif args.agent == "validation":
+        traiter = adaptateur_graphe_validation()
     else:
         traiter = adaptateur_pipeline()
     lignes = evaluer(traiter, emails)
