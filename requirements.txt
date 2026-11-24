@@ -9,6 +9,7 @@ pytest>=9                   # tests hors ligne : python -m pytest
 # Observabilité et poste du conseiller
 streamlit>=1.67             # streamlit run poste_conseiller.py
 langsmith                   # traces dans LangSmith, en option (LANGSMITH_TRACING)
+langgraph-cli[inmem]        # LangGraph Studio : langgraph dev --allow-blocking --no-reload
 
 # Serveur MCP
 mcp
