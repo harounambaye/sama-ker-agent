@@ -14,6 +14,9 @@ data/
 # Traces brutes (seules les traces analysées dans traces/ sont versionnées)
 traces/brutes/
 
+# Serveur local de LangGraph Studio (langgraph dev)
+.langgraph_api/
+
 # Python
 __pycache__/
 *.py[cod]

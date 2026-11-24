@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "sama_ker": "./agent/studio.py:graphe"
+  },
+  "env": ".env"
+}
