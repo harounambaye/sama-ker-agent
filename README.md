@@ -164,6 +164,16 @@ Pour l'évaluation, `agent.pipeline.resultat_evaluation()` renvoie la décision
 (`repondre`, `demander_precision`, `transmettre`, `creer_visite`), le brouillon,
 les créneaux proposés, les appels d'outils et les tokens.
 
+## Résultats
+
+- **Traces analysées** ([traces/](traces/README.md)), toutes issues de lancements réels :
+  - une demande de l'exercice 1 ;
+  - une conversation complète, de la demande jusqu'à la visite confirmée ;
+  - un échec analysé, puis corrigé.
+- **Évaluation** ([eval/](eval/README.md)) : 15 emails de test. On y compare l'agent de
+  l'exercice 1 et le pipeline sur le taux de réussite, les appels d'outils, les tokens et
+  le temps ([conclusions](eval/conclusions_finales.md)).
+
 ## Tests
 
 ```bash
