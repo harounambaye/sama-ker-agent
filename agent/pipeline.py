@@ -17,11 +17,13 @@ retrouvés dans le checkpointer.
 
 from __future__ import annotations
 
+import time
 from datetime import datetime
 from email.utils import parseaddr
 from typing import Callable, TypedDict
 
 import anthropic
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
@@ -344,12 +346,29 @@ def construire_pipeline(
                         motif=(etat.get("decision") or {}).get("motif"))
         return {"issue": "refuse"}
 
+    def observer(nom: str, f: Callable[[EtatPipeline], dict]) -> Callable[[EtatPipeline], dict]:
+        """Chaque nœud laisse un événement « noeud » (nom, durée, fini ou pause) ; tous
+        les événements émis pendant le nœud portent le fil traité."""
+        def noeud(etat: EtatPipeline) -> dict:
+            trace.contexte = {"fil_id": etat.get("fil_id")}
+            t0 = time.perf_counter()
+            try:
+                maj = f(etat)
+            except GraphInterrupt:
+                trace.evenement("noeud", noeud=nom, statut="pause",
+                                duree_ms=round((time.perf_counter() - t0) * 1000))
+                raise
+            trace.evenement("noeud", noeud=nom, statut="fini",
+                            duree_ms=round((time.perf_counter() - t0) * 1000))
+            return maj
+        return noeud
+
     g = StateGraph(EtatPipeline)
     for nom, f in [("trier", trier), ("rechercher", rechercher), ("rediger", rediger_email),
                    ("preparer", preparer), ("choisir_visite", choisir_visite),
                    ("valider", valider), ("ecrire", ecrire), ("suite_visite", suite_visite),
                    ("transmettre", transmettre), ("refuser", refuser)]:
-        g.add_node(nom, f)
+        g.add_node(nom, observer(nom, f))
     g.add_edge(START, "trier")
     g.add_conditional_edges("trier", apres_trier,
                             ["transmettre", "rechercher", "choisir_visite", "rediger", END])
