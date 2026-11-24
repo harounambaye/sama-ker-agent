@@ -123,11 +123,12 @@ def main() -> None:
     import sys
 
     from agent import config
-    from agent.briques import catalogue, sondes
+    from agent.briques import agenda_et_messagerie, catalogue, sondes
 
     cfg = config.charger()
     _, brique = catalogue()
-    resultats = VerificateurEtat(sondes(cfg, brique)).verifier()
+    agenda, messagerie = agenda_et_messagerie()
+    resultats = VerificateurEtat(sondes(cfg, brique, agenda, messagerie)).verifier()
     print(f"État des briques (modèle : {cfg.model})\n{rapport(resultats)}")
     tout_ok = all(r["ok"] for r in resultats.values())
     print("\nok" if tout_ok else "\nAu moins une brique est indisponible.")
