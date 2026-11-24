@@ -64,9 +64,11 @@ python -m agent.etat      # code de sortie 0 si tout est ok, 1 sinon
 État des briques (modèle : claude-haiku-5-5)
   ok      modele     312 ms
   ok      catalogue  2 ms
-  ok      calendar   0 ms · factice (Calendar pas encore branché)
-  ok      gmail      0 ms · factice (Gmail pas encore branché)
+  ok      calendar   0 ms · factice
+  ok      gmail      0 ms · factice
 ```
+
+Avec `BRIQUES=google`, la même commande sonde le vrai Calendar et le vrai Gmail.
 
 Chaque brique expose `verifier_etat()` sans argument ni effet de bord. Le code
 du graphe, pas le modèle, l'appelle : au démarrage (une brique en erreur bloque
