@@ -1,0 +1,4 @@
+{"t_ms": 20234, "run_id": "1671cff8", "type": "decision", "fil_id": "fil-m0007", "decision": {"action": "approuver", "conseiller": "Khady"}, "probleme": null}
+{"t_ms": 20257, "run_id": "1671cff8", "type": "envoyer_brouillon", "fil_id": "fil-m0007", "conseiller": "Khady", "resultat": {"ok": true, "brouillon_id": "d0008"}}
+{"t_ms": 22978, "run_id": "1671cff8", "type": "decision", "fil_id": "fil-m0005", "decision": {"action": "approuver", "conseiller": "Khady"}, "probleme": null}
+{"t_ms": 22982, "run_id": "1671cff8", "type": "envoyer_brouillon", "fil_id": "fil-m0005", "conseiller": "Khady", "resultat": {"ok": true, "brouillon_id": "d0006"}}
