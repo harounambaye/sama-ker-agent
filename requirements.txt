@@ -6,6 +6,10 @@ python-dotenv>=1.2
 tzdata                      # fuseau Africa/Dakar sous Windows
 pytest>=9                   # tests hors ligne : python -m pytest
 
+# Observabilité et poste du conseiller
+streamlit>=1.67             # streamlit run poste_conseiller.py
+langsmith                   # traces dans LangSmith, en option (LANGSMITH_TRACING)
+
 # Serveur MCP
 mcp
 

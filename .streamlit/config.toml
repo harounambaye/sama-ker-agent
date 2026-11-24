@@ -1,0 +1,7 @@
+# Poste du conseiller : accessible depuis cette machine seulement, aucune statistique envoyée.
+[server]
+address = "localhost"
+port = 8501
+
+[browser]
+gatherUsageStats = false
