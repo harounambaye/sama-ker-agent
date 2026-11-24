@@ -58,7 +58,7 @@ def sonde_modele(cfg: Config, client: anthropic.Anthropic | None = None) -> Call
 
 def sonde_non_branchee(nom: str) -> Callable[[], dict]:
     def verifier_etat() -> dict:
-        return {"ok": True, "latence_ms": 0, "mode": f"factice ({nom} pas encore branché)"}
+        return {"ok": True, "latence_ms": 0, "mode": f"non utilisé ici ({nom})"}
     return verifier_etat
 
 
