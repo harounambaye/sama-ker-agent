@@ -24,6 +24,7 @@ class Trace:
         Path(dossier).mkdir(parents=True, exist_ok=True)
         self.chemin = Path(dossier) / nom
         self.verbeux = verbeux
+        self.contexte: dict = {}   # champs ajoutés à chaque événement (ex. fil_id du nœud en cours)
         self._t0 = time.perf_counter()
 
     def evenement(self, type_: str, **donnees) -> None:
@@ -31,6 +32,7 @@ class Trace:
             "t_ms": round((time.perf_counter() - self._t0) * 1000),
             "run_id": self.run_id,
             "type": type_,
+            **self.contexte,
             **donnees,
         }
         with self.chemin.open("a", encoding="utf-8") as f:
