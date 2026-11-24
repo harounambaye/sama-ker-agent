@@ -64,9 +64,10 @@ class Agence:
             "gmail": self.messagerie.verifier_etat, "calendar": self.agenda.verifier_etat,
             "catalogue": self.catalogue.verifier_etat})
         self.client = Client([])
+        self.graphe_trace = Trace(cfg.traces_dir)
         self.graphe = construire_pipeline(
             cfg, self.outils, self.agenda, self.messagerie, self.verificateur,
-            Trace(cfg.traces_dir), ouvrir_checkpointer(cfg.checkpoint_db), self.client,
+            self.graphe_trace, ouvrir_checkpointer(cfg.checkpoint_db), self.client,
             horloge=lambda: MARDI)
 
     def recevoir(self, corps="Un F3 à Mermoz ?", fil_id=None):
@@ -267,3 +268,16 @@ def test_apres_envoi_des_creneaux_la_commande_suivante_est_affichee(agence, caps
     suggerer_reponse_client(d["fil_id"], {"issue": "envoye", "etat": s.values})
     sortie = capsys.readouterr().out
     assert f"--fil {d['fil_id']}" in sortie and '--de "Awa Ndiaye <awa@example.com>"' in sortie
+
+
+def test_chaque_noeud_est_trace_avec_son_fil(agence):
+    d = agence.recevoir()
+    agence.traiter(d, json_modele(tri(**F3_MERMOZ)), email(f"SK-001.\n\n{REPERE}"))
+    agence.decider(d["fil_id"])
+    trace = agence.graphe_trace
+    evenements = [json.loads(l) for l in trace.chemin.read_text(encoding="utf-8").splitlines()]
+    noeuds = [(e["noeud"], e["statut"]) for e in evenements if e["type"] == "noeud"]
+    assert noeuds == [("trier", "fini"), ("rechercher", "fini"), ("rediger", "fini"),
+                      ("preparer", "fini"), ("valider", "pause"), ("valider", "fini"),
+                      ("ecrire", "fini")]
+    assert all(e["fil_id"] == d["fil_id"] for e in evenements)   # y compris les appels au modèle
