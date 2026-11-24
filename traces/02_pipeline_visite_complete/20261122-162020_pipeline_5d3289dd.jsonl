@@ -1,0 +1,2 @@
+{"t_ms": 4593, "run_id": "5d3289dd", "type": "decision", "fil_id": "fil-m0007", "decision": {"action": "approuver", "conseiller": "Khady"}, "probleme": null}
+{"t_ms": 4599, "run_id": "5d3289dd", "type": "envoyer_brouillon", "fil_id": "fil-m0007", "conseiller": "Khady", "resultat": {"ok": true, "brouillon_id": "d0011"}}
