@@ -15,6 +15,7 @@ from typing import Any
 import anthropic
 
 from agent.config import Config
+from agent.observabilite import instrumenter
 from agent.traces import Trace
 from contracts import erreur
 
@@ -22,7 +23,7 @@ _PANNE = (anthropic.InternalServerError, anthropic.APIConnectionError, anthropic
 
 
 def client_par_defaut() -> anthropic.Anthropic:
-    return anthropic.Anthropic(max_retries=2, timeout=60.0)
+    return instrumenter(anthropic.Anthropic(max_retries=2, timeout=60.0))
 
 
 def appeler(
