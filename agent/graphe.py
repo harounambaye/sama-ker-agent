@@ -21,6 +21,7 @@ import anthropic
 from langgraph.graph import END, START, StateGraph
 
 from agent.config import Config
+from agent.observabilite import instrumenter
 from agent.outils import BoiteAOutils
 from agent.prompts import SYSTEME
 from agent.traces import Trace
@@ -75,7 +76,7 @@ def ajouter_boucle(
     (réponse, limite, refus ou erreur), elle passe au nœud `suite`, qui lit
     `statut` et `reponse` dans l'état.
     """
-    client = client or anthropic.Anthropic(max_retries=2, timeout=60.0)
+    client = client or instrumenter(anthropic.Anthropic(max_retries=2, timeout=60.0))
     definitions = outils.definitions()
     systeme = [{"type": "text", "text": SYSTEME}]
 
