@@ -164,6 +164,52 @@ Pour l'évaluation, `agent.pipeline.resultat_evaluation()` renvoie la décision
 (`repondre`, `demander_precision`, `transmettre`, `creer_visite`), le brouillon,
 les créneaux proposés, les appels d'outils et les tokens.
 
+## Observabilité et poste du conseiller
+
+### Poste du conseiller dans le navigateur
+
+```bash
+streamlit run poste_conseiller.py        # http://localhost:8501, cette machine seulement
+```
+
+| Onglet | Contenu |
+|---|---|
+| Demandes | Les fils, du plus récent au plus ancien (⏸ à valider, ✅ envoyé, ↪ transmis, ✖ refusé). Pour le fil choisi : le **graphe avec le chemin suivi** (vert = étape franchie, orange = pause, gris = transmis), les appels au modèle, les tokens (cache compris) et le temps de l'agent, ce que le modèle a compris (tri), ce que le code a trouvé (biens, créneaux), la chronologie complète de la trace, et la validation : **Approuver**, modifier le texte, **Refuser** |
+| Nouvel email | Avec la messagerie factice : exemples prêts à l'emploi (demande de visite, question, demande vague, injection, réclamation). Après l'envoi de créneaux, le fil propose de simuler la réponse du client. |
+| Écritures validées | Chaque envoi et chaque visite exécutés après validation, avec le conseiller qui a validé |
+| Évaluation | La comparaison et les conclusions de [eval/](eval/README.md) |
+
+La barre latérale montre l'**état des quatre briques**, avec un bouton pour les revérifier, et
+le nom du conseiller qui valide. Le poste et `python -m agent.conseiller` partagent le même
+graphe, la même mémoire (le checkpointer) et les mêmes traces : on peut passer de l'un à l'autre.
+
+Ce que le poste affiche vient des traces ([agent/observation.py](agent/observation.py)) :
+- chaque nœud du pipeline y laisse un événement `noeud` (nom, durée, fini ou pause) ;
+- chaque événement porte le fil traité ;
+- le dessin est généré à partir du graphe compilé lui-même, il ne peut donc pas diverger du code.
+
+### LangSmith et LangGraph Studio (en option)
+
+Dans `.env` : `LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY` (compte gratuit sur
+smith.langchain.com) et `LANGSMITH_PROJECT`.
+- **Traces LangSmith :** chaque exécution du graphe (nœuds, état en entrée et en sortie) et
+  chaque appel au modèle (messages, réponse, tokens, durée ; client Anthropic instrumenté par
+  [agent/observabilite.py](agent/observabilite.py)). Elles sont regroupées par fil Gmail (`thread_id`).
+- **LangGraph Studio :** le graphe s'exécute en direct, nœud par nœud.
+
+  ```bash
+  langgraph dev --allow-blocking --no-reload
+  ```
+
+  Le lien Studio s'affiche dans le terminal. Un fil Studio correspond à un fil Gmail :
+  - entrée : `{"expediteur", "objet", "corps"}` ;
+  - pause de validation : reprendre avec `{"action": "approuver", "conseiller": "Khady"}` ;
+  - réponse du client : nouvelle entrée dans le même fil.
+
+  Gmail et Calendar y sont factices ([agent/studio.py](agent/studio.py)).
+
+Sans ces variables, rien ne quitte la machine : seules les traces JSONL locales existent.
+
 ## Résultats
 
 - **Traces analysées** ([traces/](traces/README.md)), toutes issues de lancements réels :
