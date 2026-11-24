@@ -136,3 +136,41 @@ def dot(aretes: list[tuple[str, str]], parcours: list[tuple[str, str]]) -> str:
 def aretes_du_graphe(graphe) -> list[tuple[str, str]]:
     """Arêtes du graphe compilé, sans boucle (valider -> valider)."""
     return [(e.source, e.target) for e in graphe.get_graph().edges if e.source != e.target]
+
+
+def resume_evenement(e: dict) -> str:
+    """Une ligne lisible par événement, pour la chronologie d'un fil."""
+    t = e["type"]
+    if t == "noeud":
+        return f"{e['noeud']} : {'⏸ pause' if e['statut'] == 'pause' else 'terminé'}"
+    if t == "appel_modele":
+        return (f"{e.get('appel', 'boucle')} · {e.get('modele')} · {e.get('stop_reason')} · "
+                f"cache lu {e.get('tokens_cache_lus', 0)}")
+    if t == "tri":
+        a = e.get("analyse") or {}
+        return f"catégorie {a.get('categorie')} - {a.get('motif', '')}"
+    if t == "parcours":
+        return f"parcours décidé par le code : {e.get('parcours')}"
+    if t == "recherche_biens":
+        biens = (e.get("resultat") or {}).get("biens") or []
+        return f"{len(biens)} bien(s) : {', '.join(b['id'] for b in biens) or 'aucun'}"
+    if t == "recherche_creneaux":
+        return f"{e.get('fenetre')} : {e.get('libres')} libres, {len(e.get('retenus') or [])} retenus"
+    if t == "redaction":
+        return f"email « {e.get('cas')} » rédigé et contrôlé"
+    if t == "controle_redaction":
+        return f"email refusé par le contrôle : {e.get('probleme')}"
+    if t == "validation_demandee":
+        return f"validation demandée : {(e.get('proposition') or {}).get('type')}"
+    if t == "decision":
+        d = e.get("decision") or {}
+        return f"{d.get('conseiller')} : {d.get('action')}" + (
+            f" (refusée : {e['probleme']})" if e.get("probleme") else "")
+    if t in TYPES_ECRITURE:
+        r = e.get("resultat") or {}
+        return f"{t} : {'ok' if r.get('ok') else r.get('message')}"
+    if t == "transmis_conseiller":
+        return "transmis à un conseiller"
+    if t == "incident":
+        return f"incident ({e.get('etape')}) : {e.get('detail')}"
+    return t
